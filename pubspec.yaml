@@ -1,0 +1,106 @@
+# ============================================================
+# FILE: pubspec.yaml
+#
+# PURPOSE:
+# Defines the Sri Guru Enterprises Android mobile application
+# and its required packages.
+# ============================================================
+
+name: sri_guru_enterprise
+
+description: "Sri Guru Enterprises mobile application."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+# ============================================================
+# APPLICATION DEPENDENCIES
+# ============================================================
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ----------------------------------------------------------
+  # CUPERTINO ICONS
+  # ----------------------------------------------------------
+
+  cupertino_icons: ^1.0.8
+
+  # ----------------------------------------------------------
+  # SQLITE DATABASE
+  # ----------------------------------------------------------
+
+  sqflite: ^2.4.2
+
+  # ----------------------------------------------------------
+  # PATH UTILITIES
+  # ----------------------------------------------------------
+
+  path: ^1.9.1
+  intl: ^0.20.3
+# ============================================================
+# DEVELOPMENT DEPENDENCIES
+# ============================================================
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # ----------------------------------------------------------
+  # FLUTTER LINTS
+  # ----------------------------------------------------------
+
+  flutter_lints: ^6.0.0
+
+  # ----------------------------------------------------------
+  # FLUTTER LAUNCHER ICONS
+  #
+  # Generates Android launcher icons from our logo.
+  # ----------------------------------------------------------
+
+  flutter_launcher_icons: ^0.14.4
+
+  # ----------------------------------------------------------
+  # SQLITE FFI FOR TESTING
+  #
+  # Allows SQLite database tests to run on the development
+  # computer without changing the Android database used by
+  # the actual application.
+  # ----------------------------------------------------------
+
+  sqflite_common_ffi: ^2.4.2+1
+
+# ============================================================
+# FLUTTER CONFIGURATION
+# ============================================================
+
+flutter:
+
+  # ----------------------------------------------------------
+  # MATERIAL DESIGN ICONS
+  # ----------------------------------------------------------
+
+  uses-material-design: true
+
+  # ----------------------------------------------------------
+  # APPLICATION ASSETS
+  #
+  # Registers the Sri Guru Enterprises logo with Flutter.
+  # ----------------------------------------------------------
+
+  assets:
+    - assets/icon/sri_guru_logo.png
+
+# ============================================================
+# APPLICATION LAUNCHER ICON
+# ============================================================
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  image_path: "assets/icon/sri_guru_logo.png"
+  min_sdk_android: 21
