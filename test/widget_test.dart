@@ -60,7 +60,7 @@ void main() {
       // --------------------------------------------------------
 
       expect(
-        find.text('Application foundation is ready'),
+        find.text('Sri Guru Enterprises'),
         findsOneWidget,
       );
     },

@@ -1,45 +1,32 @@
 // ============================================================
-// FILE: fleet_service_repository.dart
+// FILE: car_document_repository.dart
 //
 // PURPOSE:
-// Provides all database operations related to Fleet Services.
+// Provides all database operations related to Car Documents.
 //
 // FUNCTIONALITY:
-// - Adds Fleet Service records.
-// - Retrieves all Fleet Service records.
-// - Retrieves a Fleet Service by ID.
-// - Updates Fleet Service records.
-// - Deletes Fleet Service records.
-// - Searches Fleet Service records.
-// - Duplicates an existing Fleet Service record.
-//
-// ARCHITECTURE:
-//
-// Fleet Service Screen
-//        ↓
-// FleetServiceRepository
-//        ↓
-// DatabaseHelper
-//        ↓
-// SQLite
-//
-// IMPORTANT:
-// Customer Number means the customer's contact/mobile number.
+// - Adds Car Document records.
+// - Retrieves all Car Document records.
+// - Retrieves a Car Document by ID.
+// - Updates Car Document records.
+// - Deletes Car Document records.
+// - Searches Car Document records.
+// - Duplicates an existing Car Document record.
 // ============================================================
 
 import 'package:sqflite/sqflite.dart';
 
 import '../core/database/database_helper.dart';
-import '../models/fleet_service.dart';
+import '../models/car_document.dart';
 
 // ============================================================
-// FLEET SERVICE REPOSITORY
+// CAR DOCUMENT REPOSITORY
 // ============================================================
 
-class FleetServiceRepository {
-  // ============================================================
+class CarDocumentRepository {
+  // ------------------------------------------------------------
   // DATABASE HELPER
-  // ============================================================
+  // ------------------------------------------------------------
 
   final DatabaseHelper _databaseHelper;
 
@@ -47,60 +34,67 @@ class FleetServiceRepository {
   // CONSTRUCTOR
   // ============================================================
 
-  FleetServiceRepository({
+  CarDocumentRepository({
     DatabaseHelper? databaseHelper,
   }) : _databaseHelper =
       databaseHelper ?? DatabaseHelper.instance;
 
   // ============================================================
-  // ADD FLEET SERVICE
+  // ADD CAR DOCUMENT
+  //
+  // Inserts a new Car Document into SQLite.
+  //
+  // Returns:
+  // Newly generated database ID.
   // ============================================================
 
-  Future<int> addFleetService(
-      FleetService fleetService,
+  Future<int> addCarDocument(
+      CarDocument carDocument,
       ) async {
     final Database database =
     await _databaseHelper.database;
 
-    final Map<String, dynamic> fleetData =
-    fleetService.toMap();
+    final Map<String, dynamic> data =
+    carDocument.toMap();
 
     // SQLite generates the ID automatically.
-    fleetData.remove('id');
+    data.remove('id');
 
     return database.insert(
-      'fleet_services',
-      fleetData,
+      'car_documents',
+      data,
     );
   }
 
   // ============================================================
-  // GET ALL FLEET SERVICES
+  // GET ALL CAR DOCUMENTS
+  //
+  // Newest records are returned first.
   // ============================================================
 
-  Future<List<FleetService>> getFleetServices() async {
+  Future<List<CarDocument>> getCarDocuments() async {
     final Database database =
     await _databaseHelper.database;
 
     final List<Map<String, dynamic>> rows =
     await database.query(
-      'fleet_services',
+      'car_documents',
       orderBy: 'id DESC',
     );
 
     return rows
         .map(
           (Map<String, dynamic> row) =>
-          FleetService.fromMap(row),
+          CarDocument.fromMap(row),
     )
         .toList();
   }
 
   // ============================================================
-  // GET FLEET SERVICE BY ID
+  // GET CAR DOCUMENT BY ID
   // ============================================================
 
-  Future<FleetService?> getFleetServiceById(
+  Future<CarDocument?> getCarDocumentById(
       int id,
       ) async {
     final Database database =
@@ -108,7 +102,7 @@ class FleetServiceRepository {
 
     final List<Map<String, dynamic>> rows =
     await database.query(
-      'fleet_services',
+      'car_documents',
       where: 'id = ?',
       whereArgs: [id],
       limit: 1,
@@ -118,96 +112,107 @@ class FleetServiceRepository {
       return null;
     }
 
-    return FleetService.fromMap(rows.first);
+    return CarDocument.fromMap(
+      rows.first,
+    );
   }
 
   // ============================================================
-  // UPDATE FLEET SERVICE
+  // UPDATE CAR DOCUMENT
   // ============================================================
 
-  Future<int> updateFleetService(
-      FleetService fleetService,
+  Future<int> updateCarDocument(
+      CarDocument carDocument,
       ) async {
-    if (fleetService.id == null) {
+    if (carDocument.id == null) {
       throw ArgumentError(
-        'Fleet Service ID is required for update.',
+        'Car Document ID is required for update.',
       );
     }
 
     final Database database =
     await _databaseHelper.database;
 
-    final Map<String, dynamic> fleetData =
-    fleetService.toMap();
+    final Map<String, dynamic> data =
+    carDocument.toMap();
 
-    // ID is used in WHERE clause.
-    fleetData.remove('id');
+    // ID is supplied through whereArgs.
+    data.remove('id');
 
     return database.update(
-      'fleet_services',
-      fleetData,
+      'car_documents',
+      data,
       where: 'id = ?',
-      whereArgs: [fleetService.id],
+      whereArgs: [carDocument.id],
     );
   }
 
   // ============================================================
-  // DELETE FLEET SERVICE
+  // DELETE CAR DOCUMENT
   // ============================================================
 
-  Future<int> deleteFleetService(
+  Future<int> deleteCarDocument(
       int id,
       ) async {
     final Database database =
     await _databaseHelper.database;
 
     return database.delete(
-      'fleet_services',
+      'car_documents',
       where: 'id = ?',
       whereArgs: [id],
     );
   }
 
   // ============================================================
-  // SEARCH FLEET SERVICES
+  // SEARCH CAR DOCUMENTS
   //
-  // Searches:
-  // - Vehicle Number
+  // Searches by:
+  // - Document Type
+  // - Other State Name
   // - Customer Number
-  // - Vehicle Brand
-  // - Vehicle Type
-  // - Work Done
+  // - Customer Name
+  // - Vehicle Number
+  // - BBTDU ID No
+  // - Payment Method
   // ============================================================
 
-  Future<List<FleetService>> searchFleetServices(
+  Future<List<CarDocument>> searchCarDocuments(
       String searchText,
       ) async {
     final Database database =
     await _databaseHelper.database;
 
-    final String query =
-    searchText.trim().toLowerCase();
+    final String search =
+    searchText.trim();
 
-    if (query.isEmpty) {
-      return getFleetServices();
+    if (search.isEmpty) {
+      return getCarDocuments();
     }
+
+    final String pattern =
+        '%$search%';
 
     final List<Map<String, dynamic>> rows =
     await database.query(
-      'fleet_services',
+      'car_documents',
       where: '''
-        LOWER(vehicle_number) LIKE ?
-        OR LOWER(customer_number) LIKE ?
-        OR LOWER(vehicle_brand) LIKE ?
-        OR LOWER(vehicle_type) LIKE ?
-        OR LOWER(work_done) LIKE ?
+        document_type LIKE ?
+        OR other_state_name LIKE ?
+        OR customer_number LIKE ?
+        OR customer_name LIKE ?
+        OR vehicle_number LIKE ?
+        OR bbtdu_id_no LIKE ?
+        OR payment_method LIKE ?
       ''',
       whereArgs: [
-        '%$query%',
-        '%$query%',
-        '%$query%',
-        '%$query%',
-        '%$query%',
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
+        pattern,
       ],
       orderBy: 'id DESC',
     );
@@ -215,34 +220,34 @@ class FleetServiceRepository {
     return rows
         .map(
           (Map<String, dynamic> row) =>
-          FleetService.fromMap(row),
+          CarDocument.fromMap(row),
     )
         .toList();
   }
 
   // ============================================================
-  // DUPLICATE FLEET SERVICE
+  // DUPLICATE CAR DOCUMENT
   //
-  // Creates a new database record using the existing
-  // Fleet Service information.
+  // Creates a NEW database record using the existing information.
+  //
+  // The original record remains unchanged.
   // ============================================================
 
-  Future<int> duplicateFleetService(
-      FleetService fleetService,
+  Future<int> duplicateCarDocument(
+      CarDocument carDocument,
       ) async {
-    final FleetService duplicate =
-    FleetService(
-      id: null,
-      date: DateTime.now(),
-      vehicleBrand: fleetService.vehicleBrand,
-      vehicleType: fleetService.vehicleType,
-      vehicleNumber: fleetService.vehicleNumber,
-      customerNumber: fleetService.customerNumber,
-      odometer: fleetService.odometer,
-      workDone: fleetService.workDone,
-      totalCount: fleetService.totalCount,
-    );
+    final Database database =
+    await _databaseHelper.database;
 
-    return addFleetService(duplicate);
+    final Map<String, dynamic> data =
+    carDocument.toMap();
+
+    // Remove original ID so SQLite creates a new one.
+    data.remove('id');
+
+    return database.insert(
+      'car_documents',
+      data,
+    );
   }
 }

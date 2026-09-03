@@ -8,6 +8,8 @@
 // CURRENT TABLES:
 // - Customers
 // - Fleet Services
+// - Emission Tests
+// - Car Documents
 //
 // IMPORTANT:
 // Customer Number means the customer's contact/mobile number.
@@ -16,19 +18,12 @@
 class DatabaseTables {
   // ------------------------------------------------------------
   // PRIVATE CONSTRUCTOR
-  //
-  // Prevents this class from being instantiated.
   // ------------------------------------------------------------
 
   DatabaseTables._();
 
   // ============================================================
   // CUSTOMERS TABLE
-  //
-  // Stores customer information used by the Customer
-  // Management module.
-  //
-  // "phone" represents the customer's Customer Number.
   // ============================================================
 
   static const String createCustomersTable = '''
@@ -44,32 +39,6 @@ class DatabaseTables {
 
   // ============================================================
   // FLEET SERVICES TABLE
-  //
-  // Stores Fleet Service records.
-  //
-  // Supported brands:
-  //
-  // - Toyota
-  // - Maruti Suzuki
-  //
-  // Vehicle Type is stored as TEXT because it can contain:
-  //
-  // - A predefined vehicle type
-  // - A custom vehicle type entered by the user
-  //
-  // Toyota:
-  // - Etios
-  // - Innova
-  // - Innova Crysta
-  // - Rumion
-  // - Custom
-  //
-  // Maruti Suzuki:
-  // - Dzire
-  // - Swift
-  // - Ertiga
-  // - Tours
-  // - Custom
   // ============================================================
 
   static const String createFleetServicesTable = '''
@@ -93,25 +62,72 @@ class DatabaseTables {
       total_count INTEGER NOT NULL
     )
   ''';
+
   // ============================================================
-// EMISSION TESTS TABLE
-//
-// Stores emission test records.
-//
-// BBTDU ID No is optional.
-// Vehicle Number is also optional.
-// ============================================================
+  // EMISSION TESTS TABLE
+  // ============================================================
 
   static const String createEmissionTestsTable = '''
-  CREATE TABLE emission_tests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    name TEXT NOT NULL,
-    vehicle_number TEXT,
-    income REAL NOT NULL,
-    bbtdu_id_no TEXT,
-    fuel_type TEXT NOT NULL,
-    payment_method TEXT NOT NULL
-  )
-''';
+    CREATE TABLE emission_tests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+      date TEXT NOT NULL,
+
+      name TEXT NOT NULL,
+
+      vehicle_number TEXT,
+
+      income REAL NOT NULL,
+
+      bbtdu_id_no TEXT,
+
+      fuel_type TEXT NOT NULL,
+
+      payment_method TEXT NOT NULL
+    )
+  ''';
+
+  // ============================================================
+  // CAR DOCUMENTS TABLE
+  //
+  // Stores Insurance, Road Tax and Permit documents.
+  //
+  // Other State Name is only used when:
+  //
+  // document_type = Other State Permit
+  //
+  // Profit is calculated automatically:
+  //
+  // Profit = Income - Expense
+  // ============================================================
+
+  static const String createCarDocumentsTable = '''
+    CREATE TABLE car_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+      document_type TEXT NOT NULL,
+
+      other_state_name TEXT,
+
+      date TEXT NOT NULL,
+
+      expiry_date TEXT NOT NULL,
+
+      customer_number TEXT NOT NULL,
+
+      customer_name TEXT NOT NULL,
+
+      vehicle_number TEXT NOT NULL,
+
+      income REAL NOT NULL,
+
+      bbtdu_id_no TEXT,
+
+      expense REAL NOT NULL,
+
+      profit REAL NOT NULL,
+
+      payment_method TEXT NOT NULL
+    )
+  ''';
 }
