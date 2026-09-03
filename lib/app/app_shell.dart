@@ -44,6 +44,7 @@ import '../screens/customer_list_screen.dart';
 import '../screens/fleet_service_list_screen.dart';
 import '../screens/emission_test_list_screen.dart';
 import '../screens/accessory_list_screen.dart';
+import '../screens/report_screen.dart';
 
 // ============================================================
 // MODELS
@@ -251,7 +252,7 @@ class _AppShellState extends State<AppShell> {
             selectedIcon: Icon(Icons.more_horiz),
             label: 'More',
           ),
-          ],
+        ],
       ),
     );
   }
@@ -331,27 +332,43 @@ class _AppShellState extends State<AppShell> {
                     icon: Icons.description_outlined,
                     title: 'Car Documents',
                     subtitle:
-                        'Insurance, permits, road tax and expiry reminders',
+                    'Insurance, permits, road tax and expiry reminders',
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (BuildContext context) =>
-                              const CarDocumentListScreen(),
+                          const CarDocumentListScreen(),
                         ),
                       );
                     },
                   ),
                   const SizedBox(height: 12),
                   _buildMoreModuleCard(
-                    icon: Icons.shopping_bag_outlined,
-                    title: 'Accessories',
+                    icon: Icons.bar_chart_outlined,
+                    title: 'Reports',
                     subtitle:
-                        'Trip Sheet, Bill Book and other accessory items',
+                    'Daily, weekly, monthly and custom date reports',
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (BuildContext context) =>
-                              const AccessoryListScreen(),
+                          const ReportScreen(),
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+                  _buildMoreModuleCard(
+                    icon: Icons.shopping_bag_outlined,
+                    title: 'Accessories',
+                    subtitle:
+                    'Trip Sheet, Bill Book and other accessory items',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) =>
+                          const AccessoryListScreen(),
                         ),
                       );
                     },
@@ -402,7 +419,7 @@ class _AppShellState extends State<AppShell> {
               Expanded(
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
