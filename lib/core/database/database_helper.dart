@@ -114,10 +114,10 @@ class DatabaseHelper {
       // --------------------------------------------------------
       // DATABASE VERSION
       //
-      // Version 4 adds the Car Documents table.
+      // Version 5 adds the Accessories table.
       // --------------------------------------------------------
 
-      version: 4,
+      version: 5,
 
       // --------------------------------------------------------
       // DATABASE CONFIGURATION
@@ -186,6 +186,19 @@ class DatabaseHelper {
             DatabaseTables.createCarDocumentsTable,
           );
         }
+
+
+        // ------------------------------------------------------
+        // VERSION 4 → VERSION 5
+        //
+        // Adds Accessories.
+        // ------------------------------------------------------
+
+        if (oldVersion < 5) {
+          await db.execute(
+            DatabaseTables.createAccessoriesTable,
+          );
+        }
       },
     );
   }
@@ -227,6 +240,15 @@ class DatabaseHelper {
 
     await db.execute(
       DatabaseTables.createCarDocumentsTable,
+    );
+
+
+    // ----------------------------------------------------------
+    // ACCESSORIES
+    // ----------------------------------------------------------
+
+    await db.execute(
+      DatabaseTables.createAccessoriesTable,
     );
   }
 

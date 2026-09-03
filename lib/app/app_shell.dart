@@ -11,7 +11,8 @@
 // - Displays the Dashboard.
 // - Displays Fleet Service alerts and reminders.
 // - Allows Fleet Service reminder SMS directly from Dashboard.
-// - Connects Customer, Fleet Service and Emission modules.
+// - Connects Customer, Fleet Service, Emission, Documents
+//   and Accessories modules.
 //
 // NAVIGATION:
 //
@@ -19,6 +20,9 @@
 // 1 → Customers
 // 2 → Fleet Services
 // 3 → Emission
+// 4 → More (Documents, Accessories and future modules)
+// 4 → Car Documents
+// 5 → Accessories
 //
 // IMPORTANT:
 // - Existing Fleet Service reminder logic is reused.
@@ -39,6 +43,7 @@ import '../screens/car_document_list_screen.dart';
 import '../screens/customer_list_screen.dart';
 import '../screens/fleet_service_list_screen.dart';
 import '../screens/emission_test_list_screen.dart';
+import '../screens/accessory_list_screen.dart';
 
 // ============================================================
 // MODELS
@@ -199,12 +204,8 @@ class _AppShellState extends State<AppShell> {
           // ----------------------------------------------------
 
           NavigationDestination(
-            icon: Icon(
-              Icons.dashboard_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.dashboard,
-            ),
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
 
@@ -213,12 +214,8 @@ class _AppShellState extends State<AppShell> {
           // ----------------------------------------------------
 
           NavigationDestination(
-            icon: Icon(
-              Icons.people_outline,
-            ),
-            selectedIcon: Icon(
-              Icons.people,
-            ),
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
             label: 'Customers',
           ),
 
@@ -227,12 +224,8 @@ class _AppShellState extends State<AppShell> {
           // ----------------------------------------------------
 
           NavigationDestination(
-            icon: Icon(
-              Icons.directions_car_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.directions_car,
-            ),
+            icon: Icon(Icons.directions_car_outlined),
+            selectedIcon: Icon(Icons.directions_car),
             label: 'Fleet',
           ),
 
@@ -241,29 +234,24 @@ class _AppShellState extends State<AppShell> {
           // ----------------------------------------------------
 
           NavigationDestination(
-            icon: Icon(
-              Icons.air_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.air,
-            ),
+            icon: Icon(Icons.air_outlined),
+            selectedIcon: Icon(Icons.air),
             label: 'Emission',
           ),
 
           // ----------------------------------------------------
-          // CAR DOCUMENTS
+          // MORE
+          //
+          // Documents, Accessories and future modules are kept
+          // here so the bottom navigation stays clean on mobile.
           // ----------------------------------------------------
 
           NavigationDestination(
-            icon: Icon(
-              Icons.description_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.description,
-            ),
-            label: 'Documents',
+            icon: Icon(Icons.more_horiz),
+            selectedIcon: Icon(Icons.more_horiz),
+            label: 'More',
           ),
-        ],
+          ],
       ),
     );
   }
@@ -303,11 +291,12 @@ class _AppShellState extends State<AppShell> {
         return const EmissionTestListScreen();
 
     // --------------------------------------------------------
-    // CAR DOCUMENTS
+    // MORE
     // --------------------------------------------------------
 
       case 4:
-        return const CarDocumentListScreen();
+        return _buildMorePage();
+
     // --------------------------------------------------------
     // FALLBACK
     // --------------------------------------------------------
@@ -315,6 +304,124 @@ class _AppShellState extends State<AppShell> {
       default:
         return _buildDashboard();
     }
+  }
+
+  // ============================================================
+  // MORE MODULES
+  //
+  // Secondary and future modules are placed here instead of
+  // crowding the bottom navigation bar.
+  // ============================================================
+
+  Widget _buildMorePage() {
+    return SafeArea(
+      child: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            title: const Text('More'),
+            automaticallyImplyLeading: false,
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(
+                [
+                  _buildMoreModuleCard(
+                    icon: Icons.description_outlined,
+                    title: 'Car Documents',
+                    subtitle:
+                        'Insurance, permits, road tax and expiry reminders',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) =>
+                              const CarDocumentListScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMoreModuleCard(
+                    icon: Icons.shopping_bag_outlined,
+                    title: 'Accessories',
+                    subtitle:
+                        'Trip Sheet, Bill Book and other accessory items',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) =>
+                              const AccessoryListScreen(),
+                        ),
+                      );
+                    },
+                  ),
+
+                  // Future modules can be added here without
+                  // increasing the number of bottom navigation
+                  // buttons.
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoreModuleCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      elevation: 1,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest,
+                ),
+                child: Icon(
+                  icon,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(subtitle),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // ============================================================

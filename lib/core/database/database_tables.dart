@@ -10,6 +10,7 @@
 // - Fleet Services
 // - Emission Tests
 // - Car Documents
+// - Accessories
 //
 // IMPORTANT:
 // Customer Number means the customer's contact/mobile number.
@@ -130,4 +131,47 @@ class DatabaseTables {
       payment_method TEXT NOT NULL
     )
   ''';
+
+  // ============================================================
+  // ACCESSORIES TABLE
+  //
+  // Stores all Accessories records.
+  //
+  // The Item field is restricted by the Accessories screen to:
+  // - Trip Sheet
+  // - Bill Book
+  // - Water Bottle
+  // - Tissue Paper
+  // - Car Perfume
+  // - Print Out
+  // - Xerox
+  //
+  // Total Amount is calculated automatically:
+  // Total Amount = Quantity × Rate
+  // ============================================================
+
+  static const String createAccessoriesTable = '''
+    CREATE TABLE accessories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+      date TEXT NOT NULL,
+
+      customer_name TEXT NOT NULL,
+
+      customer_number TEXT NOT NULL,
+
+      item TEXT NOT NULL,
+
+      quantity REAL NOT NULL,
+
+      rate REAL NOT NULL,
+
+      total_amount REAL NOT NULL,
+
+      payment_method TEXT NOT NULL,
+
+      remarks TEXT NOT NULL
+    )
+  ''';
+
 }
