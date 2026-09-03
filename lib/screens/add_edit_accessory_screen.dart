@@ -706,7 +706,7 @@ class _AddEditAccessoryScreenState
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
-              value: item.item,
+              initialValue: item.item,
               decoration: const InputDecoration(
                 labelText: 'Item *',
                 prefixIcon: Icon(
@@ -843,7 +843,7 @@ class _AddEditAccessoryScreenState
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
-              value: _paymentMethod,
+              initialValue: _paymentMethod,
               decoration: const InputDecoration(
                 labelText: 'Payment Method *',
                 prefixIcon: Icon(
