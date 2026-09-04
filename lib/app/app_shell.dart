@@ -39,7 +39,7 @@ import '../screens/car_document_list_screen.dart';
 // ============================================================
 // APPLICATION SCREENS
 // ============================================================
-
+import '../screens/backup_restore_screen.dart';
 import '../screens/customer_list_screen.dart';
 import '../screens/fleet_service_list_screen.dart';
 import '../screens/emission_test_list_screen.dart';
@@ -369,6 +369,22 @@ class _AppShellState extends State<AppShell> {
                         MaterialPageRoute<void>(
                           builder: (BuildContext context) =>
                           const AccessoryListScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  _buildMoreModuleCard(
+                    icon: Icons.backup_outlined,
+                    title: 'Backup & Restore',
+                    subtitle:
+                    'Google Drive backup and restore of application data',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) =>
+                          const BackupRestoreScreen(),
                         ),
                       );
                     },
