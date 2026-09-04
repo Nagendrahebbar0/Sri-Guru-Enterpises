@@ -1033,6 +1033,14 @@ Sri Guru Enterprises
 
   // ============================================================
   // INFO ROW
+  //
+  // IMPORTANT:
+  // Explicit text styles are used here instead of inheriting
+  // the complete DefaultTextStyle.
+  //
+  // This prevents abnormal font size, color and decoration
+  // from being applied to Customer, Customer Number,
+  // Vehicle Number, Date and other information.
   // ============================================================
 
   Widget _buildInfoRow(
@@ -1048,30 +1056,40 @@ Sri Guru Enterprises
           icon,
           size: 19,
         ),
+
         const SizedBox(
           width: 8,
         ),
+
         Expanded(
-          child: RichText(
-            text: TextSpan(
-              style:
-              DefaultTextStyle.of(
-                context,
-              ).style,
+          child: Text.rich(
+            TextSpan(
               children: <InlineSpan>[
                 TextSpan(
                   text: '$label: ',
-                  style:
-                  const TextStyle(
+                  style: const TextStyle(
+                    fontSize: 14,
                     fontWeight:
                     FontWeight.w600,
+                    decoration:
+                    TextDecoration.none,
                   ),
                 ),
                 TextSpan(
                   text: value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight:
+                    FontWeight.normal,
+                    decoration:
+                    TextDecoration.none,
+                  ),
                 ),
               ],
             ),
+            maxLines: 3,
+            overflow:
+            TextOverflow.ellipsis,
           ),
         ),
       ],
