@@ -2,12 +2,13 @@
 // FILE: restore_service.dart
 //
 // PURPOSE:
-// Safely restores a Sri Guru Enterprises SQLite database.
+// Safely restores a complete Sri Guru Enterprises SQLite
+// database backup.
 //
 // RESPONSIBILITIES:
 // - Create a temporary restore-file location.
 // - Validate downloaded SQLite backup files.
-// - Validate required application tables.
+// - Validate the required current application tables.
 // - Create a safety copy of the current database.
 // - Replace the current database.
 // - Reopen and verify the restored database.
@@ -15,10 +16,9 @@
 //
 // IMPORTANT:
 // - Does NOT communicate with Google Drive.
-// - GoogleDriveProvider handles cloud communication.
+// - GoogleDriveProvider handles Google Drive communication.
 // - Does NOT modify DatabaseHelper.
-// - Current application database version is handled by
-//   DatabaseHelper when the restored database is reopened.
+// - Works with the existing DatabaseHelper database path.
 // ============================================================
 
 import 'dart:io';
@@ -26,7 +26,6 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
-
 
 import '../../core/database/database_helper.dart';
 import 'backup_service.dart';
@@ -61,7 +60,11 @@ class RestoreService {
   // ----------------------------------------------------------
   // REQUIRED DATABASE TABLES
   //
-  // These tables represent the current application database.
+  // These are the important tables currently used by the
+  // Sri Guru Enterprises application.
+  //
+  // The backup must contain these tables before it can replace
+  // the current database.
   // ----------------------------------------------------------
 
   static const List<String> _requiredTables = <String>[
@@ -70,6 +73,11 @@ class RestoreService {
     'emission_tests',
     'car_documents',
     'accessories',
+    'tyre_stocks',
+    'gst_settings',
+    'tyre_bills',
+    'tyre_bill_items',
+    'alignment_bills',
   ];
 
   // ==========================================================
@@ -105,19 +113,20 @@ class RestoreService {
   // RESTORE DATABASE
   // ==========================================================
 
-  /// Restores the supplied SQLite backup.
+  /// Restores the supplied SQLite database backup.
   ///
-  /// A safety copy of the current database is created first.
+  /// A safety copy of the current database is created before
+  /// the live database is replaced.
   Future<RestoreResult> restoreDatabase({
     required File backupFile,
   }) async {
     File? safetyBackup;
 
     try {
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 1
-      // Validate that the downloaded file exists.
-      // ------------------------------------------------------
+      // Check whether the backup file exists.
+      // --------------------------------------------------------
 
       if (!await backupFile.exists()) {
         return const RestoreResult(
@@ -127,20 +136,20 @@ class RestoreService {
         );
       }
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 2
-      // Validate the SQLite file before touching the current
+      // Validate the backup BEFORE touching the current
       // database.
-      // ------------------------------------------------------
+      // --------------------------------------------------------
 
       await _validateBackupFile(
         backupFile,
       );
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 3
-      // Get the current database path.
-      // ------------------------------------------------------
+      // Get the path of the live application database.
+      // --------------------------------------------------------
 
       final String currentDatabasePath =
       await BackupService.instance.getDatabasePath();
@@ -148,64 +157,77 @@ class RestoreService {
       final File currentDatabase =
       File(currentDatabasePath);
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 4
       // Create a safety copy of the current database.
-      // ------------------------------------------------------
+      //
+      // If anything goes wrong later, this copy can be used
+      // to recover the previous database.
+      // --------------------------------------------------------
 
       if (await currentDatabase.exists()) {
-        safetyBackup =
-        await _createSafetyBackup(
+        safetyBackup = await _createSafetyBackup(
           currentDatabase,
         );
       }
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 5
-      // Close the live database before replacing its file.
-      // ------------------------------------------------------
+      // Close the live SQLite connection before replacing
+      // the database file.
+      // --------------------------------------------------------
 
       await DatabaseHelper.instance.closeDatabase();
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 6
-      // Replace the current database.
-      // ------------------------------------------------------
+      // Replace the current database with the validated backup.
+      // --------------------------------------------------------
 
       await backupFile.copy(
         currentDatabasePath,
       );
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 7
       // Reopen the restored database through DatabaseHelper.
-      // ------------------------------------------------------
+      //
+      // DatabaseHelper remains responsible for its normal
+      // database initialization and migration handling.
+      // --------------------------------------------------------
 
       final Database restoredDatabase =
       await DatabaseHelper.instance.database;
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 8
-      // Verify that the restored database contains the
-      // required Sri Guru Enterprises tables.
-      // ------------------------------------------------------
+      // Verify that the restored database contains all current
+      // Sri Guru Enterprises tables.
+      // --------------------------------------------------------
 
       await _validateRestoredDatabase(
         restoredDatabase,
       );
 
-      // ------------------------------------------------------
+      // --------------------------------------------------------
       // STEP 9
-      // Remove the safety backup because the restore succeeded.
-      // ------------------------------------------------------
+      // Restore succeeded.
+      //
+      // The old database safety copy is no longer required.
+      // --------------------------------------------------------
 
       if (safetyBackup != null) {
         try {
           await safetyBackup.delete();
         } catch (_) {
-          // Cleanup failure does not mean the restore failed.
+          // Cleanup failure does not mean restore failed.
         }
       }
+
+      // --------------------------------------------------------
+      // STEP 10
+      // Return successful result.
+      // --------------------------------------------------------
 
       return const RestoreResult(
         success: true,
@@ -213,9 +235,13 @@ class RestoreService {
         'Database restored successfully.',
       );
     } catch (error) {
-      // ------------------------------------------------------
-      // Attempt to recover the previous database.
-      // ------------------------------------------------------
+      // ========================================================
+      // RESTORE FAILED
+      // ========================================================
+
+      // --------------------------------------------------------
+      // Try to recover the previous database.
+      // --------------------------------------------------------
 
       try {
         await DatabaseHelper.instance.closeDatabase();
@@ -225,6 +251,8 @@ class RestoreService {
           final String currentDatabasePath =
           await BackupService.instance.getDatabasePath();
 
+          // Replace the failed restored database with the
+          // original safety copy.
           await safetyBackup.copy(
             currentDatabasePath,
           );
@@ -250,29 +278,34 @@ class RestoreService {
   // VALIDATE BACKUP FILE
   // ==========================================================
 
+  /// Validates the downloaded file before it is allowed to
+  /// replace the live application database.
   Future<void> _validateBackupFile(
       File backupFile,
       ) async {
-    // --------------------------------------------------------
+    // ----------------------------------------------------------
+    // STEP 1
     // Check file size.
-    // --------------------------------------------------------
+    // ----------------------------------------------------------
 
     final int fileSize =
     await backupFile.length();
 
     if (fileSize < 100) {
-      throw RestoreException(
-        'The backup file is too small to be a valid SQLite database.',
+      throw const RestoreException(
+        'The backup file is too small to be a valid '
+            'SQLite database.',
       );
     }
 
-    // --------------------------------------------------------
-    // SQLite database files begin with:
+    // ----------------------------------------------------------
+    // STEP 2
+    // Validate the SQLite file header.
     //
-    // "SQLite format 3"
+    // SQLite database files start with:
     //
-    // The header occupies the first 16 bytes.
-    // --------------------------------------------------------
+    // SQLite format 3
+    // ----------------------------------------------------------
 
     final List<int> header =
     await _readHeader(
@@ -299,7 +332,7 @@ class RestoreService {
     ];
 
     if (header.length < expectedHeader.length) {
-      throw RestoreException(
+      throw const RestoreException(
         'The backup file has an invalid SQLite header.',
       );
     }
@@ -308,17 +341,20 @@ class RestoreService {
     index < expectedHeader.length;
     index++) {
       if (header[index] != expectedHeader[index]) {
-        throw RestoreException(
+        throw const RestoreException(
           'The selected backup is not a valid SQLite database.',
         );
       }
     }
 
-    // --------------------------------------------------------
-    // Open the backup separately and inspect its tables.
+    // ----------------------------------------------------------
+    // STEP 3
+    // Open the backup separately.
     //
-    // This happens BEFORE replacing the live database.
-    // --------------------------------------------------------
+    // This is read-only validation.
+    //
+    // The live database is NOT touched yet.
+    // ----------------------------------------------------------
 
     final Database validationDatabase =
     await openDatabase(
@@ -327,10 +363,18 @@ class RestoreService {
     );
 
     try {
+      // --------------------------------------------------------
+      // Verify the required application tables.
+      // --------------------------------------------------------
+
       await _validateRestoredDatabase(
         validationDatabase,
       );
     } finally {
+      // --------------------------------------------------------
+      // Always close the validation database.
+      // --------------------------------------------------------
+
       await validationDatabase.close();
     }
   }
@@ -360,6 +404,8 @@ class RestoreService {
   // VALIDATE DATABASE TABLES
   // ==========================================================
 
+  /// Verifies that the database contains all required current
+  /// application tables.
   Future<void> _validateRestoredDatabase(
       Database database,
       ) async {
@@ -373,6 +419,10 @@ class RestoreService {
       ''',
     );
 
+    // ----------------------------------------------------------
+    // Convert database table rows into a Set for fast lookup.
+    // ----------------------------------------------------------
+
     final Set<String> tableNames =
     rows
         .map(
@@ -381,6 +431,10 @@ class RestoreService {
     )
         .toSet();
 
+    // ----------------------------------------------------------
+    // Find required tables that are missing.
+    // ----------------------------------------------------------
+
     final List<String> missingTables =
     _requiredTables
         .where(
@@ -388,6 +442,10 @@ class RestoreService {
       !tableNames.contains(table),
     )
         .toList();
+
+    // ----------------------------------------------------------
+    // Reject the backup if any required table is missing.
+    // ----------------------------------------------------------
 
     if (missingTables.isNotEmpty) {
       throw RestoreException(
@@ -402,6 +460,7 @@ class RestoreService {
   // CREATE SAFETY BACKUP
   // ==========================================================
 
+  /// Creates a copy of the current database before restore.
   Future<File> _createSafetyBackup(
       File currentDatabase,
       ) async {
@@ -420,16 +479,25 @@ class RestoreService {
     final File safetyBackup = File(
       path.join(
         directory.path,
-        'sri_guru_enterprise_before_restore_$timestamp.db',
+        'sri_guru_enterprise_before_restore_'
+            '$timestamp.db',
       ),
     );
+
+    // ----------------------------------------------------------
+    // Copy the current database.
+    // ----------------------------------------------------------
 
     await currentDatabase.copy(
       safetyBackup.path,
     );
 
+    // ----------------------------------------------------------
+    // Confirm that the safety copy exists.
+    // ----------------------------------------------------------
+
     if (!await safetyBackup.exists()) {
-      throw RestoreException(
+      throw const RestoreException(
         'Unable to create a safety backup before restore.',
       );
     }
@@ -474,16 +542,13 @@ class RestoreService {
   // SANITIZE FILE NAME
   // ==========================================================
 
+  /// Removes unsafe characters from a downloaded backup
+  /// filename before using it as a local file path.
   String _sanitizeFileName(
       String fileName,
       ) {
     final String baseName =
     path.basename(fileName);
-
-    // --------------------------------------------------------
-    // Only allow a safe set of characters in the temporary
-    // filename.
-    // --------------------------------------------------------
 
     final String sanitized =
     baseName.replaceAll(
@@ -506,10 +571,9 @@ class RestoreService {
       DateTime dateTime,
       ) {
     String twoDigits(int value) {
-      return value.toString().padLeft(
-        2,
-        '0',
-      );
+      return value
+          .toString()
+          .padLeft(2, '0');
     }
 
     return '${dateTime.year}_'
@@ -525,26 +589,31 @@ class RestoreService {
 // RESTORE RESULT
 // ============================================================
 
+/// Result returned after a restore operation.
 class RestoreResult {
-  final bool success;
-  final String message;
-
   const RestoreResult({
     required this.success,
     required this.message,
   });
+
+  /// Whether the restore operation succeeded.
+  final bool success;
+
+  /// Human-readable result message.
+  final String message;
 }
 
 // ============================================================
 // RESTORE EXCEPTION
 // ============================================================
 
+/// Exception used for invalid or incompatible restore files.
 class RestoreException implements Exception {
-  final String message;
-
   const RestoreException(
       this.message,
       );
+
+  final String message;
 
   @override
   String toString() {

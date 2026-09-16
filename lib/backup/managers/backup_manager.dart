@@ -2,26 +2,28 @@
 // FILE: backup_manager.dart
 //
 // PURPOSE:
-// Coordinates backup creation, Google Drive upload,
-// backup listing, restore and backup deletion.
+// Central manager for Sri Guru Enterprises backup and restore.
 //
-// FUNCTIONALITY:
-// - Creates local database backup.
-// - Uploads backup to Google Drive.
-// - Keeps maximum 30 backups on Google Drive.
-// - Deletes older backups only after a successful upload.
-// - Restores the latest backup.
-// - Restores a selected backup.
-// - Deletes individual Google Drive backups.
+// RESPONSIBILITIES:
+// - Create complete SQLite database backups.
+// - Upload backups to Google Drive.
+// - List Google Drive backups.
+// - Restore selected Google Drive backups.
+// - Restore the latest Google Drive backup.
+// - Delete Google Drive backups.
+// - Keep only the latest 30 Google Drive backups.
 //
 // IMPORTANT:
-// - Google Drive is used for cloud backup.
-// - Firebase is NOT used.
-// - Failed uploads do NOT trigger deletion of old backups.
+// - This manager works with complete SQLite .db files.
+// - It does NOT use the old customer-only JSON backup system.
+// - Google Drive communication is handled by GoogleDriveProvider.
+// - Database backup creation is handled by BackupService.
+// - Database restoration is handled by RestoreService.
 // ============================================================
 
 import 'dart:io';
 
+import '../auth/google_auth_service.dart';
 import '../providers/google_drive_provider.dart';
 import '../services/backup_service.dart';
 import '../services/restore_service.dart';
@@ -33,233 +35,179 @@ import '../services/restore_service.dart';
 class BackupManager {
   BackupManager._();
 
+  // ----------------------------------------------------------
+  // SINGLETON
+  // ----------------------------------------------------------
+
   static final BackupManager instance =
   BackupManager._();
 
-  // ============================================================
-  // SERVICES
-  // ============================================================
-
-  final BackupService _backupService =
-      BackupService.instance;
-
-  final GoogleDriveProvider _driveProvider =
-      GoogleDriveProvider.instance;
-
-  final RestoreService _restoreService =
-      RestoreService.instance;
-
-  // ============================================================
-  // BACKUP RETENTION
-  //
-  // Maximum number of backups allowed in the dedicated
-  // Sri Guru Enterprises Google Drive backup folder.
+  // ----------------------------------------------------------
+  // MAXIMUM GOOGLE DRIVE BACKUPS
   //
   // The newest 30 backups are retained.
   // Older backups are automatically deleted.
-  // ============================================================
+  // ----------------------------------------------------------
 
   static const int maxGoogleDriveBackups = 30;
 
-  // ============================================================
+  // ==========================================================
   // BACKUP NOW
-  //
-  // Creates a fresh database backup and uploads it to
-  // Google Drive.
-  //
-  // After successful upload:
-  // - Existing backups are listed.
-  // - Newest 30 backups are retained.
-  // - Older backups are deleted.
-  //
-  // If upload fails:
-  // - Old backups are NOT deleted.
-  // ============================================================
+  // ==========================================================
 
+  /// Creates a complete SQLite database backup and uploads it
+  /// to Google Drive.
+  ///
+  /// Returns the uploaded Google Drive backup information.
   Future<GoogleDriveBackupFile?> backupNow() async {
-    // ----------------------------------------------------------
-    // CREATE LOCAL DATABASE BACKUP
-    // ----------------------------------------------------------
-
-    final File localBackup =
-    await _backupService.createBackup();
+    File? localBackup;
 
     try {
       // --------------------------------------------------------
-      // GET FILE NAME
+      // STEP 1
+      // Make sure Google authentication is available.
+      //
+      // requestPermission=true allows the Drive permission to
+      // be requested when it has not yet been granted.
       // --------------------------------------------------------
 
-      final String fileName =
-          localBackup.path.split(
-            Platform.pathSeparator,
-          ).last;
-
-      // --------------------------------------------------------
-      // UPLOAD BACKUP TO GOOGLE DRIVE
-      // --------------------------------------------------------
-
-      final String? driveFileId =
-      await _driveProvider.uploadBackupFile(
-        file: localBackup,
-        fileName: fileName,
+      final client =
+      await GoogleAuthService.getDriveAuthClient(
+        requestPermission: true,
       );
 
-      // --------------------------------------------------------
-      // UPLOAD WAS NOT COMPLETED
-      //
-      // Do NOT delete any existing Google Drive backups.
-      // --------------------------------------------------------
-
-      if (driveFileId == null) {
+      if (client == null) {
         return null;
       }
 
       // --------------------------------------------------------
-      // GET UPDATED BACKUP LIST
+      // STEP 2
+      // Create a complete SQLite database backup.
+      // --------------------------------------------------------
+
+      localBackup =
+      await BackupService.instance.createBackup();
+
+      // --------------------------------------------------------
+      // STEP 3
+      // Generate the filename.
       //
-      // This is done only after successful upload.
+      // BackupService already creates a timestamped .db file,
+      // so the original filename is retained.
+      // --------------------------------------------------------
+
+      final String fileName =
+          localBackup.uri.pathSegments.last;
+
+      // --------------------------------------------------------
+      // STEP 4
+      // Upload the database backup to Google Drive.
+      // --------------------------------------------------------
+
+      final String? uploadedFileId =
+      await GoogleDriveProvider.instance
+          .uploadBackupFile(
+        file: localBackup,
+        fileName: fileName,
+      );
+
+      if (uploadedFileId == null) {
+        return null;
+      }
+
+      // --------------------------------------------------------
+      // STEP 5
+      // Retrieve the uploaded backup information.
+      //
+      // This gives the caller the actual Drive file metadata.
       // --------------------------------------------------------
 
       final List<GoogleDriveBackupFile> backups =
-      await _driveProvider.listBackupFiles();
+      await GoogleDriveProvider.instance
+          .listBackupFiles();
 
-      // --------------------------------------------------------
-      // ENFORCE 30-BACKUP RETENTION POLICY
-      // --------------------------------------------------------
-
-      await _enforceBackupRetention(
-        backups,
-      );
-
-      // --------------------------------------------------------
-      // FIND THE NEWLY UPLOADED BACKUP
-      // --------------------------------------------------------
+      GoogleDriveBackupFile? uploadedBackup;
 
       for (final GoogleDriveBackupFile backup
       in backups) {
-        if (backup.id == driveFileId) {
-          return backup;
+        if (backup.id == uploadedFileId) {
+          uploadedBackup = backup;
+          break;
         }
       }
 
       // --------------------------------------------------------
-      // FALLBACK
-      //
-      // The upload was successful even if the newly uploaded
-      // file was not returned by the listing operation.
+      // STEP 6
+      // Enforce the 30-backup retention limit.
       // --------------------------------------------------------
 
-      return GoogleDriveBackupFile(
-        id: driveFileId,
-        name: fileName,
+      await _enforceRetention(
+        backups,
       );
+
+      return uploadedBackup;
     } finally {
       // --------------------------------------------------------
-      // DELETE TEMPORARY LOCAL BACKUP
+      // STEP 7
+      // Delete the temporary local backup.
       //
-      // The local backup is only temporary.
-      // The permanent backup is stored on Google Drive.
+      // The database backup is now stored on Google Drive.
       // --------------------------------------------------------
 
-      try {
-        await _backupService.deleteLocalBackup(
-          localBackup,
-        );
-      } catch (_) {
-        // ------------------------------------------------------
-        // Failure to remove temporary file must not affect
-        // the completed Google Drive backup.
-        // ------------------------------------------------------
+      if (localBackup != null) {
+        try {
+          await BackupService.instance
+              .deleteLocalBackup(
+            localBackup,
+          );
+        } catch (_) {
+          // Temporary-file cleanup failure should not cause
+          // the completed cloud backup to be reported as failed.
+        }
       }
     }
   }
 
-  // ============================================================
-  // ENFORCE BACKUP RETENTION
-  //
-  // Keeps the newest 30 backups.
-  //
-  // The GoogleDriveProvider already returns backups ordered
-  // by createdTime descending:
-  //
-  // Newest
-  //   ↓
-  // Oldest
-  //
-  // Therefore indexes:
-  //
-  // 0 - 29  → KEEP
-  // 30+     → DELETE
-  //
-  // ============================================================
-
-  Future<void> _enforceBackupRetention(
-      List<GoogleDriveBackupFile> backups,
-      ) async {
-    // ----------------------------------------------------------
-    // Nothing to delete when 30 or fewer backups exist.
-    // ----------------------------------------------------------
-
-    if (backups.length <= maxGoogleDriveBackups) {
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // GET BACKUPS OLDER THAN THE LATEST 30.
-    // ----------------------------------------------------------
-
-    final List<GoogleDriveBackupFile> oldBackups =
-    backups
-        .skip(maxGoogleDriveBackups)
-        .toList();
-
-    // ----------------------------------------------------------
-    // DELETE OLD BACKUPS ONE BY ONE.
-    //
-    // If one deletion fails, continue attempting the remaining
-    // old backups.
-    // ----------------------------------------------------------
-
-    for (final GoogleDriveBackupFile backup
-    in oldBackups) {
-      try {
-        await _driveProvider.deleteBackupFile(
-          fileId: backup.id,
-        );
-      } catch (_) {
-        // ------------------------------------------------------
-        // Do not allow failure to delete one old backup to
-        // break the backup operation.
-        // ------------------------------------------------------
-      }
-    }
-  }
-
-  // ============================================================
+  // ==========================================================
   // GET AVAILABLE BACKUPS
-  // ============================================================
+  // ==========================================================
 
+  /// Returns Google Drive database backups.
+  ///
+  /// Newest backups are returned first.
   Future<List<GoogleDriveBackupFile>>
   getAvailableBackups() async {
-    return _driveProvider.listBackupFiles();
+    // ----------------------------------------------------------
+    // Make sure the user is authenticated.
+    // ----------------------------------------------------------
+
+    final client =
+    await GoogleAuthService.getDriveAuthClient(
+      requestPermission: true,
+    );
+
+    if (client == null) {
+      return <GoogleDriveBackupFile>[];
+    }
+
+    return GoogleDriveProvider.instance
+        .listBackupFiles();
   }
 
-  // ============================================================
+  // ==========================================================
   // RESTORE LATEST BACKUP
-  //
-  // The first backup returned by Google Drive is the newest
-  // backup because the provider sorts by createdTime descending.
-  // ============================================================
+  // ==========================================================
 
+  /// Downloads and restores the newest Google Drive backup.
   Future<RestoreResult> restoreLatestBackup() async {
     final List<GoogleDriveBackupFile> backups =
-    await _driveProvider.listBackupFiles();
+    await getAvailableBackups();
 
     if (backups.isEmpty) {
       return const RestoreResult(
         success: false,
         message:
-        'No backup was found on Google Drive.',
+        'No Google Drive backups were found.',
       );
     }
 
@@ -268,79 +216,171 @@ class BackupManager {
     );
   }
 
-  // ============================================================
+  // ==========================================================
   // RESTORE SELECTED BACKUP
-  // ============================================================
+  // ==========================================================
 
+  /// Downloads and restores a selected Google Drive backup.
   Future<RestoreResult> restoreBackup({
     required GoogleDriveBackupFile backup,
   }) async {
-    // ----------------------------------------------------------
-    // CREATE TEMPORARY RESTORE FILE
-    // ----------------------------------------------------------
-
-    final File restoreFile =
-    await _restoreService
-        .createTemporaryRestoreFile(
-      backup.name,
-    );
+    File? downloadedFile;
 
     try {
       // --------------------------------------------------------
-      // DOWNLOAD BACKUP
+      // STEP 1
+      // Authenticate with Google Drive.
       // --------------------------------------------------------
 
-      final File? downloadedFile =
-      await _driveProvider.downloadBackupFile(
-        fileId: backup.id,
-        destinationFile: restoreFile,
+      final client =
+      await GoogleAuthService.getDriveAuthClient(
+        requestPermission: true,
       );
 
-      if (downloadedFile == null) {
+      if (client == null) {
         return const RestoreResult(
           success: false,
           message:
-          'Google Drive authorization is required.',
+          'Google Drive authentication was not completed.',
         );
       }
 
       // --------------------------------------------------------
-      // RESTORE DATABASE
+      // STEP 2
+      // Create a temporary local restore file.
       // --------------------------------------------------------
 
-      return await _restoreService.restoreDatabase(
-        backupFile: downloadedFile,
+      downloadedFile =
+      await RestoreService.instance
+          .createTemporaryRestoreFile(
+        backup.name,
+      );
+
+      // --------------------------------------------------------
+      // STEP 3
+      // Download the selected database.
+      // --------------------------------------------------------
+
+      final File? downloaded =
+      await GoogleDriveProvider.instance
+          .downloadBackupFile(
+        fileId: backup.id,
+        destinationFile: downloadedFile,
+      );
+
+      if (downloaded == null ||
+          !await downloaded.exists()) {
+        return const RestoreResult(
+          success: false,
+          message:
+          'Unable to download the selected backup.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // STEP 4
+      // Restore the complete SQLite database.
+      //
+      // RestoreService performs validation and creates a
+      // safety copy before replacing the live database.
+      // --------------------------------------------------------
+
+      return await RestoreService.instance
+          .restoreDatabase(
+        backupFile: downloaded,
+      );
+    } catch (error) {
+      return RestoreResult(
+        success: false,
+        message:
+        'Restore failed: $error',
       );
     } finally {
       // --------------------------------------------------------
-      // DELETE TEMPORARY RESTORE FILE
+      // STEP 5
+      // Delete the temporary downloaded database.
       // --------------------------------------------------------
 
-      try {
-        if (await restoreFile.exists()) {
-          await restoreFile.delete();
+      if (downloadedFile != null) {
+        try {
+          if (await downloadedFile.exists()) {
+            await downloadedFile.delete();
+          }
+        } catch (_) {
+          // Cleanup failure does not change the restore result.
         }
-      } catch (_) {
-        // ------------------------------------------------------
-        // Temporary file cleanup failure must not change the
-        // restore result.
-        // ------------------------------------------------------
       }
     }
   }
 
-  // ============================================================
+  // ==========================================================
   // DELETE BACKUP
-  //
-  // Allows the Backup & Restore screen to manually delete an
-  // individual Google Drive backup.
-  // ============================================================
+  // ==========================================================
 
+  /// Deletes one backup from Google Drive.
   Future<bool> deleteBackup({
     required GoogleDriveBackupFile backup,
   }) async {
-    return _driveProvider.deleteBackupFile(
+    // ----------------------------------------------------------
+    // Authenticate with Google Drive.
+    // ----------------------------------------------------------
+
+    final client =
+    await GoogleAuthService.getDriveAuthClient(
+      requestPermission: true,
+    );
+
+    if (client == null) {
+      return false;
+    }
+
+    // ----------------------------------------------------------
+    // Delete the selected Drive file.
+    // ----------------------------------------------------------
+
+    return GoogleDriveProvider.instance
+        .deleteBackupFile(
       fileId: backup.id,
     );
+  }
+
+  // ==========================================================
+  // ENFORCE BACKUP RETENTION
+  // ==========================================================
+
+  /// Keeps only the newest [maxGoogleDriveBackups] files.
+  Future<void> _enforceRetention(
+      List<GoogleDriveBackupFile> backups,
+      ) async {
+    // ----------------------------------------------------------
+    // Nothing to delete when the limit has not been reached.
+    // ----------------------------------------------------------
+
+    if (backups.length <= maxGoogleDriveBackups) {
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // The provider returns newest files first.
+    //
+    // Start deleting from index 30 onwards.
+    // ----------------------------------------------------------
+
+    for (int index = maxGoogleDriveBackups;
+    index < backups.length;
+    index++) {
+      final GoogleDriveBackupFile backup =
+      backups[index];
+
+      try {
+        await GoogleDriveProvider.instance
+            .deleteBackupFile(
+          fileId: backup.id,
+        );
+      } catch (_) {
+        // Continue attempting to remove the remaining old
+        // backups even if one deletion fails.
+      }
+    }
   }
 }

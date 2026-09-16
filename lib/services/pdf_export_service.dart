@@ -1,11 +1,21 @@
-// *****************************************************************************
-// File        : pdf_export_service.dart
-// Project     : Sri Guru Enterprises
-// Description : PDF export service for the Report module.
+// ****************************************************************************
+// FILE        : pdf_export_service.dart
+// PROJECT     : Sri Guru Enterprises
+// DESCRIPTION : PDF export service for the Report module.
 //
 // Creates a professional multi-page PDF using the same filtered ReportData
 // and ReportDateRange used by the Report screen and Excel exporter.
-// *****************************************************************************
+//
+// REPORT SECTIONS:
+// 1. Customers
+// 2. Fleet Services
+// 3. Emission Tests
+// 4. Car Documents
+// 5. Accessories
+// 6. Tyre Stock
+// 7. Tyre Billing
+// 8. Alignment Billing
+// ****************************************************************************
 
 import 'dart:io';
 
@@ -15,75 +25,162 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-
 import '../models/report_data.dart';
-import '../services/report_date_filter_service.dart';
+import 'report_date_filter_service.dart';
 
 class PdfExportService {
+  // --------------------------------------------------------------------------
+  // PRIVATE CONSTRUCTOR
+  // --------------------------------------------------------------------------
+
   PdfExportService._();
 
-  static final PdfExportService instance = PdfExportService._();
+  // --------------------------------------------------------------------------
+  // SINGLETON INSTANCE
+  // --------------------------------------------------------------------------
 
-  // ---------------------------------------------------------------------------
+  static final PdfExportService instance =
+  PdfExportService._();
+
+  // --------------------------------------------------------------------------
   // DATE FORMAT
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
 
-  final DateFormat _dateFormat = DateFormat('dd/MM/yyyy');
+  final DateFormat _dateFormat =
+  DateFormat('dd/MM/yyyy');
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // EXPORT PDF
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   Future<File> exportReport({
     required ReportData reportData,
     required ReportDateRange dateRange,
   }) async {
-    final pw.Document pdf = pw.Document();
+    final pw.Document pdf =
+    pw.Document();
 
-    // -------------------------------------------------------------------------
-    // PDF TITLE
-    // -------------------------------------------------------------------------
+    // ------------------------------------------------------------------------
+    // CREATE MULTI-PAGE PDF
+    // ------------------------------------------------------------------------
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
+
+        // --------------------------------------------------------------
+        // PAGE HEADER
+        // --------------------------------------------------------------
+
         header: (pw.Context context) {
           return _buildHeader();
         },
+
+        // --------------------------------------------------------------
+        // PAGE FOOTER
+        // --------------------------------------------------------------
+
         footer: (pw.Context context) {
           return _buildFooter(context);
         },
+
+        // --------------------------------------------------------------
+        // PDF CONTENT
+        // --------------------------------------------------------------
+
         build: (pw.Context context) {
           return <pw.Widget>[
+            // Report title.
             _buildReportTitle(dateRange),
+
             pw.SizedBox(height: 18),
 
+            // Report summary.
             _buildSummary(reportData),
-            pw.SizedBox(height: 20),
 
-            _buildCustomersSection(reportData.customers),
-            _buildFleetServicesSection(reportData.fleetServices),
-            _buildEmissionTestsSection(reportData.emissionTests),
-            _buildCarDocumentsSection(reportData.carDocuments),
-            _buildAccessoriesSection(reportData.accessories),
+            // --------------------------------------------------------
+            // CUSTOMERS
+            // --------------------------------------------------------
+
+            _buildCustomersSection(
+              reportData.customers,
+            ),
+
+            // --------------------------------------------------------
+            // FLEET SERVICES
+            // --------------------------------------------------------
+
+            _buildFleetServicesSection(
+              reportData.fleetServices,
+            ),
+
+            // --------------------------------------------------------
+            // EMISSION TESTS
+            // --------------------------------------------------------
+
+            _buildEmissionTestsSection(
+              reportData.emissionTests,
+            ),
+
+            // --------------------------------------------------------
+            // CAR DOCUMENTS
+            // --------------------------------------------------------
+
+            _buildCarDocumentsSection(
+              reportData.carDocuments,
+            ),
+
+            // --------------------------------------------------------
+            // ACCESSORIES
+            // --------------------------------------------------------
+
+            _buildAccessoriesSection(
+              reportData.accessories,
+            ),
+
+            // --------------------------------------------------------
+            // TYRE STOCK
+            // --------------------------------------------------------
+
+            _buildTyreStockSection(
+              reportData.tyreStocks,
+            ),
+
+            // --------------------------------------------------------
+            // TYRE BILLING
+            // --------------------------------------------------------
+
+            _buildTyreBillingSection(
+              reportData.tyreBills,
+            ),
+
+            // --------------------------------------------------------
+            // ALIGNMENT BILLING
+            // --------------------------------------------------------
+
+            _buildAlignmentBillingSection(
+              reportData.alignmentBills,
+            ),
           ];
         },
       ),
     );
 
-    // -------------------------------------------------------------------------
-    // SAVE FILE
-    // -------------------------------------------------------------------------
+    // =========================================================================
+    // SAVE PDF
+    // =========================================================================
 
     final Directory directory =
     await getApplicationDocumentsDirectory();
 
     final String from =
-    DateFormat('yyyy_MM_dd').format(dateRange.from);
+    DateFormat('yyyy_MM_dd')
+        .format(dateRange.from);
 
     final String to =
-    DateFormat('yyyy_MM_dd').format(dateRange.to);
+    DateFormat('yyyy_MM_dd')
+        .format(dateRange.to);
 
     final String fileName =
         'Sri_Guru_Enterprises_Report_${from}_$to.pdf';
@@ -100,33 +197,41 @@ class PdfExportService {
     return file;
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // SHARE PDF
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
-  Future<Future<bool>> shareReport({
+  Future<void> shareReport({
     required ReportData reportData,
     required ReportDateRange dateRange,
   }) async {
-    final File file = await exportReport(
+    final File file =
+    await exportReport(
       reportData: reportData,
       dateRange: dateRange,
     );
 
-    return Printing.sharePdf(
+    await Printing.sharePdf(
       bytes: await file.readAsBytes(),
-      filename: file.path.split(Platform.pathSeparator).last,
+      filename:
+      file.path.split(
+        Platform.pathSeparator,
+      ).last,
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // HEADER
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildHeader() {
     return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 8),
-      decoration: const pw.BoxDecoration(
+      padding:
+      const pw.EdgeInsets.only(
+        bottom: 8,
+      ),
+      decoration:
+      const pw.BoxDecoration(
         border: pw.Border(
           bottom: pw.BorderSide(
             color: PdfColors.grey,
@@ -138,20 +243,27 @@ class PdfExportService {
         'Sri Guru Enterprises',
         style: pw.TextStyle(
           fontSize: 16,
-          fontWeight: pw.FontWeight.bold,
+          fontWeight:
+          pw.FontWeight.bold,
         ),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // FOOTER
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
-  pw.Widget _buildFooter(pw.Context context) {
+  pw.Widget _buildFooter(
+      pw.Context context,
+      ) {
     return pw.Container(
-      padding: const pw.EdgeInsets.only(top: 8),
-      decoration: const pw.BoxDecoration(
+      padding:
+      const pw.EdgeInsets.only(
+        top: 8,
+      ),
+      decoration:
+      const pw.BoxDecoration(
         border: pw.Border(
           top: pw.BorderSide(
             color: PdfColors.grey,
@@ -182,9 +294,9 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // REPORT TITLE
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildReportTitle(
       ReportDateRange dateRange,
@@ -197,12 +309,14 @@ class PdfExportService {
           'Enterprise Report',
           style: pw.TextStyle(
             fontSize: 24,
-            fontWeight: pw.FontWeight.bold,
+            fontWeight:
+            pw.FontWeight.bold,
           ),
         ),
         pw.SizedBox(height: 6),
         pw.Text(
-          'Report Period: ${_dateFormat.format(dateRange.from)}'
+          'Report Period: '
+              '${_dateFormat.format(dateRange.from)}'
               ' - '
               '${_dateFormat.format(dateRange.to)}',
           style: const pw.TextStyle(
@@ -213,15 +327,16 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // SUMMARY
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildSummary(
       ReportData data,
       ) {
     return pw.Container(
-      padding: const pw.EdgeInsets.all(14),
+      padding:
+      const pw.EdgeInsets.all(14),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(
           color: PdfColors.grey,
@@ -237,12 +352,16 @@ class PdfExportService {
             'Report Summary',
             style: pw.TextStyle(
               fontSize: 16,
-              fontWeight: pw.FontWeight.bold,
+              fontWeight:
+              pw.FontWeight.bold,
             ),
           ),
+
           pw.SizedBox(height: 10),
+
           pw.Table(
-            border: pw.TableBorder.all(
+            border:
+            pw.TableBorder.all(
               color: PdfColors.grey,
             ),
             children: <pw.TableRow>[
@@ -267,6 +386,18 @@ class PdfExportService {
                 data.accessories.length,
               ),
               _summaryRow(
+                'Tyre Stock',
+                data.tyreStocks.length,
+              ),
+              _summaryRow(
+                'Tyre Billing',
+                data.tyreBills.length,
+              ),
+              _summaryRow(
+                'Alignment Billing',
+                data.alignmentBills.length,
+              ),
+              _summaryRow(
                 'Total Records',
                 data.totalRecords,
               ),
@@ -284,23 +415,26 @@ class PdfExportService {
     return pw.TableRow(
       children: <pw.Widget>[
         pw.Padding(
-          padding: const pw.EdgeInsets.all(6),
+          padding:
+          const pw.EdgeInsets.all(6),
           child: pw.Text(title),
         ),
         pw.Padding(
-          padding: const pw.EdgeInsets.all(6),
+          padding:
+          const pw.EdgeInsets.all(6),
           child: pw.Text(
             '$count',
-            textAlign: pw.TextAlign.right,
+            textAlign:
+            pw.TextAlign.right,
           ),
         ),
       ],
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // CUSTOMERS
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildCustomersSection(
       List<Map<String, dynamic>> rows,
@@ -330,9 +464,9 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // FLEET SERVICES
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildFleetServicesSection(
       List<Map<String, dynamic>> rows,
@@ -354,7 +488,9 @@ class PdfExportService {
             (Map<String, dynamic> row) {
           return <String>[
             _value(row['id']),
-            _formatDatabaseDate(row['date']),
+            _formatDatabaseDate(
+              row['date'],
+            ),
             _value(row['vehicle_brand']),
             _value(row['vehicle_type']),
             _value(row['vehicle_number']),
@@ -368,9 +504,9 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // EMISSION TESTS
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildEmissionTestsSection(
       List<Map<String, dynamic>> rows,
@@ -391,7 +527,9 @@ class PdfExportService {
             (Map<String, dynamic> row) {
           return <String>[
             _value(row['id']),
-            _formatDatabaseDate(row['date']),
+            _formatDatabaseDate(
+              row['date'],
+            ),
             _value(row['name']),
             _value(row['vehicle_number']),
             _value(row['income']),
@@ -404,9 +542,9 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // CAR DOCUMENTS
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildCarDocumentsSection(
       List<Map<String, dynamic>> rows,
@@ -434,8 +572,12 @@ class PdfExportService {
             _value(row['id']),
             _value(row['document_type']),
             _value(row['other_state_name']),
-            _formatDatabaseDate(row['date']),
-            _formatDatabaseDate(row['expiry_date']),
+            _formatDatabaseDate(
+              row['date'],
+            ),
+            _formatDatabaseDate(
+              row['expiry_date'],
+            ),
             _value(row['customer_number']),
             _value(row['customer_name']),
             _value(row['vehicle_number']),
@@ -450,9 +592,9 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // ACCESSORIES
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildAccessoriesSection(
       List<Map<String, dynamic>> rows,
@@ -475,7 +617,9 @@ class PdfExportService {
             (Map<String, dynamic> row) {
           return <String>[
             _value(row['id']),
-            _formatDatabaseDate(row['date']),
+            _formatDatabaseDate(
+              row['date'],
+            ),
             _value(row['customer_number']),
             _value(row['customer_name']),
             _value(row['item']),
@@ -490,9 +634,159 @@ class PdfExportService {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
+  // TYRE STOCK
+  // ==========================================================================
+
+  pw.Widget _buildTyreStockSection(
+      List<Map<String, dynamic>> rows,
+      ) {
+    return _buildSection(
+      title: 'Tyre Stock',
+      headers: <String>[
+        'ID',
+        'Franchise',
+        'Vehicle Type',
+        'Tyre',
+        'Pattern',
+        'Size',
+        'Stock',
+        'Sell Price',
+        'LLP',
+      ],
+      rows: rows.map(
+            (Map<String, dynamic> row) {
+          return <String>[
+            _value(row['id']),
+            _value(row['franchise']),
+            _value(row['vehicle_type']),
+            _value(row['tyre']),
+            _value(row['pattern']),
+            _value(row['size']),
+            _value(row['stock']),
+            _value(row['sell_price']),
+            _value(row['llp']),
+          ];
+        },
+      ).toList(),
+    );
+  }
+
+  // ==========================================================================
+  // TYRE BILLING
+  // ==========================================================================
+
+  pw.Widget _buildTyreBillingSection(
+      List<Map<String, dynamic>> rows,
+      ) {
+    return _buildSection(
+      title: 'Tyre Billing',
+      headers: <String>[
+        'ID',
+        'Invoice Number',
+        'Bill Type',
+        'GST Invoice Number',
+        'Date',
+        'Customer Name',
+        'Customer Number',
+        'Vehicle Number',
+        'KMS',
+        'GSTIN',
+        'Legal Name',
+        'Trade Name',
+        'Taxable Amount',
+        'SGST Rate',
+        'SGST Amount',
+        'CGST Rate',
+        'CGST Amount',
+        'Grand Total',
+        'Payment Method',
+        'Remarks',
+      ],
+      rows: rows.map(
+            (Map<String, dynamic> row) {
+          return <String>[
+            _value(row['id']),
+            _value(row['invoice_number']),
+            _value(row['bill_type']),
+            _value(row['gst_invoice_number']),
+            _formatDatabaseDate(
+              row['date'],
+            ),
+            _value(row['customer_name']),
+            _value(row['customer_number']),
+            _value(row['vehicle_number']),
+            _value(row['kms']),
+            _value(row['gstin']),
+            _value(row['legal_name']),
+            _value(row['trade_name']),
+            _value(row['taxable_amount']),
+            _value(row['sgst_rate']),
+            _value(row['sgst_amount']),
+            _value(row['cgst_rate']),
+            _value(row['cgst_amount']),
+            _value(row['grand_total']),
+            _value(row['payment_method']),
+            _value(row['remarks']),
+          ];
+        },
+      ).toList(),
+    );
+  }
+
+  // ==========================================================================
+  // ALIGNMENT BILLING
+  // ==========================================================================
+
+  pw.Widget _buildAlignmentBillingSection(
+      List<Map<String, dynamic>> rows,
+      ) {
+    return _buildSection(
+      title: 'Alignment Billing',
+      headers: <String>[
+        'ID',
+        'Bill Number',
+        'Date',
+        'Customer Name',
+        'Customer Number',
+        'Address',
+        'Vehicle Number',
+        'KMS',
+        'Service',
+        'Quantity',
+        'Rate',
+        'Amount',
+        'Payment Method',
+        'Remarks',
+      ],
+      rows: rows.map(
+            (Map<String, dynamic> row) {
+          return <String>[
+            _value(row['id']),
+            _value(row['bill_number']),
+            _formatDatabaseDate(
+              row['date'],
+            ),
+            _value(row['customer_name']),
+            _value(row['customer_number']),
+            _value(row['address']),
+            _value(row['vehicle_number']),
+            _value(row['kms']),
+            _value(row['service']),
+            _value(row['quantity']),
+            _value(row['rate']),
+            _value(row['amount']),
+            _value(row['payment_method']),
+            _value(row['remarks']),
+          ];
+        },
+      ).toList(),
+    );
+  }
+
+  // ==========================================================================
   // GENERIC SECTION
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   pw.Widget _buildSection({
     required String title,
@@ -509,17 +803,24 @@ class PdfExportService {
           title,
           style: pw.TextStyle(
             fontSize: 17,
-            fontWeight: pw.FontWeight.bold,
+            fontWeight:
+            pw.FontWeight.bold,
           ),
         ),
 
         pw.SizedBox(height: 8),
 
+        // ------------------------------------------------------------
+        // Empty section.
+        // ------------------------------------------------------------
+
         if (rows.isEmpty)
           pw.Container(
             width: double.infinity,
-            padding: const pw.EdgeInsets.all(10),
-            decoration: pw.BoxDecoration(
+            padding:
+            const pw.EdgeInsets.all(10),
+            decoration:
+            pw.BoxDecoration(
               border: pw.Border.all(
                 color: PdfColors.grey,
               ),
@@ -532,44 +833,65 @@ class PdfExportService {
               ),
             ),
           )
+
+        // ------------------------------------------------------------
+        // Section table.
+        // ------------------------------------------------------------
+
         else
           pw.TableHelper.fromTextArray(
             headers: headers,
             data: rows,
+
             headerStyle: pw.TextStyle(
               fontSize: 7,
-              fontWeight: pw.FontWeight.bold,
+              fontWeight:
+              pw.FontWeight.bold,
             ),
-            cellStyle: const pw.TextStyle(
+
+            cellStyle:
+            const pw.TextStyle(
               fontSize: 6.5,
             ),
-            headerDecoration: const pw.BoxDecoration(
+
+            headerDecoration:
+            const pw.BoxDecoration(
               color: PdfColors.grey300,
             ),
+
             cellPadding:
             const pw.EdgeInsets.all(4),
-            border: pw.TableBorder.all(
+
+            border:
+            pw.TableBorder.all(
               color: PdfColors.grey,
               width: 0.5,
             ),
+
             columnWidths:
-            _buildColumnWidths(headers.length),
+            _buildColumnWidths(
+              headers.length,
+            ),
           ),
       ],
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // COLUMN WIDTHS
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
-  Map<int, pw.TableColumnWidth> _buildColumnWidths(
+  Map<int, pw.TableColumnWidth>
+  _buildColumnWidths(
       int columnCount,
       ) {
-    final Map<int, pw.TableColumnWidth> widths =
+    final Map<int, pw.TableColumnWidth>
+    widths =
     <int, pw.TableColumnWidth>{};
 
-    for (int i = 0; i < columnCount; i++) {
+    for (int i = 0;
+    i < columnCount;
+    i++) {
       widths[i] =
       const pw.FlexColumnWidth();
     }
@@ -577,9 +899,9 @@ class PdfExportService {
     return widths;
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // DATABASE DATE FORMAT
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   String _formatDatabaseDate(
       dynamic value,
@@ -588,7 +910,8 @@ class PdfExportService {
       return '';
     }
 
-    final String text = value.toString().trim();
+    final String text =
+    value.toString().trim();
 
     if (text.isEmpty) {
       return '';
@@ -603,9 +926,9 @@ class PdfExportService {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
   // GENERIC VALUE
-  // ---------------------------------------------------------------------------
+  // ==========================================================================
 
   String _value(
       dynamic value,

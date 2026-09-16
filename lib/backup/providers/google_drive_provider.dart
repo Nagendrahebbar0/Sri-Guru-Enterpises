@@ -1,516 +1,296 @@
-// ============================================================
-// FILE: google_drive_provider.dart
-//
-// PURPOSE:
-// Handles Google Drive operations for Sri Guru Enterprises.
-//
-// RESPONSIBILITIES:
-// - Get Google Drive authorization.
-// - Create/find the application backup folder.
-// - Upload backup files.
-// - List backup files.
-// - Download backup files.
-// - Delete backup files.
-//
-// IMPORTANT:
-// - Uses Google Drive REST API.
-// - Uses drive.file scope only.
-// - Does NOT use Firebase.
-// - Authentication is handled by GoogleAuthService.
-// ============================================================
-
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
+import 'package:googleapis/drive/v3.dart' as drive;
+import 'package:googleapis_auth/googleapis_auth.dart';
 
 import '../auth/google_auth_service.dart';
 
+/// Represents one backup file stored in Google Drive.
+class GoogleDriveBackupFile {
+  const GoogleDriveBackupFile({
+    required this.id,
+    required this.name,
+    this.createdTime,
+    this.size,
+  });
+
+  /// Google Drive file ID.
+  final String id;
+
+  /// Backup file name.
+  final String name;
+
+  /// File creation time in Google Drive.
+  final DateTime? createdTime;
+
+  /// File size in bytes.
+  final int? size;
+}
+
+/// Handles Google Drive operations for Sri Guru Enterprise backups.
+///
+/// This provider stores complete SQLite database backup files.
+/// It does not store individual customer records or JSON files.
 class GoogleDriveProvider {
   GoogleDriveProvider._();
 
-  // ----------------------------------------------------------
-  // SINGLETON
-  // ----------------------------------------------------------
-
+  /// Singleton instance.
   static final GoogleDriveProvider instance = GoogleDriveProvider._();
 
-  // ----------------------------------------------------------
-  // GOOGLE DRIVE API
-  // ----------------------------------------------------------
+  /// Name of the dedicated backup folder in Google Drive.
+  static const String backupFolderName = 'SriGuruEnterprise_Backups';
 
-  static const String _driveApiBase =
-      'https://www.googleapis.com/drive/v3';
+  /// MIME type used by Google Drive for folders.
+  static const String _folderMimeType = 'application/vnd.google-apps.folder';
 
-  static const String _uploadApiBase =
-      'https://www.googleapis.com/upload/drive/v3';
+  /// Creates a Google Drive API client using the currently signed-in
+  /// Google account.
+  /// Creates a Google Drive API client using the
+  /// currently signed-in Google account.
+  Future<drive.DriveApi?> _getDriveApi() async {
+    try {
+      final AuthClient? client =
+      await GoogleAuthService.getDriveAuthClient(
+        requestPermission: true,
+      );
 
-  // ----------------------------------------------------------
-  // APPLICATION BACKUP FOLDER
-  // ----------------------------------------------------------
+      if (client == null) {
+        return null;
+      }
 
-  static const String backupFolderName = 'Sri Guru Enterprises';
+      return drive.DriveApi(client);
+    } catch (_) {
+      return null;
+    }
+  }
 
-  static const String _backupFolderMimeType =
-      'application/vnd.google-apps.folder';
+  /// Returns the backup folder ID.
+  ///
+  /// If the folder does not exist, it is created automatically.
+  Future<String?> getBackupFolderId() async {
+    final drive.DriveApi? driveApi = await _getDriveApi();
 
-  // ----------------------------------------------------------
-  // BACKUP FILE MIME TYPE
-  //
-  // SQLite database backup files will be uploaded as binary
-  // files. The actual filename will identify the backup.
-  // ----------------------------------------------------------
-
-  static const String backupFileMimeType =
-      'application/octet-stream';
-
-  // ----------------------------------------------------------
-  // CREATE / FIND BACKUP FOLDER
-  //
-  // drive.file allows the application to work with files and
-  // folders created or opened through the application.
-  // ----------------------------------------------------------
-
-  Future<String?> getOrCreateBackupFolder() async {
-    final headers =
-    await GoogleAuthService.getDriveAuthorizationHeaders(
-      requestPermission: true,
-    );
-
-    if (headers == null) {
+    if (driveApi == null) {
       return null;
     }
 
-    // --------------------------------------------------------
-    // First try to find an existing folder created by the app.
-    // --------------------------------------------------------
+    try {
+      // Search for our dedicated backup folder.
+      final drive.FileList result = await driveApi.files.list(
+        q: "name = '$backupFolderName' "
+            "and mimeType = '$_folderMimeType' "
+            "and trashed = false",
+        spaces: 'drive',
+        $fields: 'files(id,name)',
+        pageSize: 10,
+      );
 
-    final String escapedFolderName =
-    backupFolderName.replaceAll("'", "\\'");
-
-    final String query =
-        "name = '$escapedFolderName' "
-        "and mimeType = '$_backupFolderMimeType' "
-        "and trashed = false";
-
-    final Uri searchUri = Uri.parse(
-      '$_driveApiBase/files'
-          '?q=${Uri.encodeQueryComponent(query)}'
-          '&spaces=drive'
-          '&fields=files(id,name,mimeType)',
-    );
-
-    final http.Response searchResponse = await http.get(
-      searchUri,
-      headers: headers,
-    );
-
-    if (searchResponse.statusCode == 200) {
-      final Map<String, dynamic> data =
-      jsonDecode(searchResponse.body) as Map<String, dynamic>;
-
-      final List<dynamic> files =
-          data['files'] as List<dynamic>? ?? <dynamic>[];
-
-      if (files.isNotEmpty) {
-        final Map<String, dynamic> folder =
-        files.first as Map<String, dynamic>;
-
-        return folder['id'] as String?;
+      // Reuse the existing folder if it was found.
+      if (result.files != null && result.files!.isNotEmpty) {
+        return result.files!.first.id;
       }
+
+      // Create the folder when it does not exist.
+      final drive.File folder = drive.File()
+        ..name = backupFolderName
+        ..mimeType = _folderMimeType;
+
+      final drive.File createdFolder = await driveApi.files.create(
+        folder,
+        $fields: 'id,name',
+      );
+
+      return createdFolder.id;
+    } catch (e) {
+      throw GoogleDriveBackupException(
+        'Unable to access the Google Drive backup folder: $e',
+      );
     }
-
-    // --------------------------------------------------------
-    // Folder does not exist.
-    // Create it.
-    // --------------------------------------------------------
-
-    final Uri createUri = Uri.parse(
-      '$_driveApiBase/files'
-          '?fields=id,name,mimeType',
-    );
-
-    final http.Response createResponse = await http.post(
-      createUri,
-      headers: <String, String>{
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(
-        <String, dynamic>{
-          'name': backupFolderName,
-          'mimeType': _backupFolderMimeType,
-        },
-      ),
-    );
-
-    if (createResponse.statusCode == 200 ||
-        createResponse.statusCode == 201) {
-      final Map<String, dynamic> data =
-      jsonDecode(createResponse.body) as Map<String, dynamic>;
-
-      return data['id'] as String?;
-    }
-
-    throw GoogleDriveException(
-      'Unable to create Google Drive backup folder.',
-      statusCode: createResponse.statusCode,
-      responseBody: createResponse.body,
-    );
   }
 
-  // ----------------------------------------------------------
-  // UPLOAD BACKUP FILE
-  //
-  // The file is uploaded into the Sri Guru Enterprises folder.
-  //
-  // Returns the Google Drive file ID.
-  // ----------------------------------------------------------
-
+  /// Uploads a complete SQLite database backup to Google Drive.
+  ///
+  /// Returns the Google Drive file ID when successful.
   Future<String?> uploadBackupFile({
     required File file,
     required String fileName,
   }) async {
-    final headers =
-    await GoogleAuthService.getDriveAuthorizationHeaders(
-      requestPermission: true,
-    );
-
-    if (headers == null) {
-      return null;
-    }
-
-    final String? folderId =
-    await getOrCreateBackupFolder();
-
-    if (folderId == null) {
-      return null;
-    }
-
     if (!await file.exists()) {
-      throw GoogleDriveException(
-        'Backup file does not exist.',
+      throw GoogleDriveBackupException(
+        'The backup file does not exist.',
       );
     }
 
-    final List<int> fileBytes =
-    await file.readAsBytes();
+    final drive.DriveApi? driveApi = await _getDriveApi();
 
-    final String boundary =
-        'sri_guru_drive_${DateTime.now().millisecondsSinceEpoch}';
-
-    final List<int> metadataBytes =
-    utf8.encode(
-      jsonEncode(
-        <String, dynamic>{
-          'name': fileName,
-          'parents': <String>[folderId],
-          'mimeType': backupFileMimeType,
-        },
-      ),
-    );
-
-    final List<int> startBoundary =
-    utf8.encode('--$boundary\r\n');
-
-    final List<int> metadataPart =
-    utf8.encode(
-      'Content-Type: application/json; charset=UTF-8\r\n'
-          '\r\n',
-    );
-
-    final List<int> mediaPart =
-    utf8.encode(
-      '\r\n'
-          '--$boundary\r\n'
-          'Content-Type: $backupFileMimeType\r\n'
-          '\r\n',
-    );
-
-    final List<int> endBoundary =
-    utf8.encode(
-      '\r\n'
-          '--$boundary--',
-    );
-
-    final List<int> body = <int>[
-      ...startBoundary,
-      ...metadataPart,
-      ...metadataBytes,
-      ...mediaPart,
-      ...fileBytes,
-      ...endBoundary,
-    ];
-
-    final Uri uploadUri = Uri.parse(
-      '$_uploadApiBase/files'
-          '?uploadType=multipart'
-          '&fields=id,name,mimeType,size,createdTime',
-    );
-
-    final http.Response response = await http.post(
-      uploadUri,
-      headers: <String, String>{
-        ...headers,
-        'Content-Type':
-        'multipart/related; boundary=$boundary',
-        'Content-Length': body.length.toString(),
-      },
-      body: body,
-    );
-
-    if (response.statusCode == 200 ||
-        response.statusCode == 201) {
-      final Map<String, dynamic> data =
-      jsonDecode(response.body) as Map<String, dynamic>;
-
-      return data['id'] as String?;
+    if (driveApi == null) {
+      return null;
     }
 
-    throw GoogleDriveException(
-      'Unable to upload backup file.',
-      statusCode: response.statusCode,
-      responseBody: response.body,
-    );
+    final String? folderId = await getBackupFolderId();
+
+    if (folderId == null) {
+      throw GoogleDriveBackupException(
+        'Unable to find or create the Google Drive backup folder.',
+      );
+    }
+
+    try {
+      // Create the Drive file metadata.
+      final drive.File metadata = drive.File()
+        ..name = fileName
+        ..parents = <String>[folderId]
+        ..mimeType = 'application/octet-stream';
+
+      // Upload the complete SQLite database file.
+      final drive.Media media = drive.Media(
+        file.openRead(),
+        await file.length(),
+      );
+
+      final drive.File uploadedFile = await driveApi.files.create(
+        metadata,
+        uploadMedia: media,
+        $fields: 'id,name,createdTime,size',
+      );
+
+      return uploadedFile.id;
+    } catch (e) {
+      throw GoogleDriveBackupException(
+        'Unable to upload the backup to Google Drive: $e',
+      );
+    }
   }
 
-  // ----------------------------------------------------------
-  // LIST BACKUP FILES
-  //
-  // Returns newest backups first.
-  // ----------------------------------------------------------
-
+  /// Returns all Sri Guru Enterprise database backups stored in Drive.
+  ///
+  /// Newest backups are returned first.
   Future<List<GoogleDriveBackupFile>> listBackupFiles() async {
-    final headers =
-    await GoogleAuthService.getDriveAuthorizationHeaders(
-      requestPermission: true,
-    );
+    final drive.DriveApi? driveApi = await _getDriveApi();
 
-    if (headers == null) {
+    if (driveApi == null) {
       return <GoogleDriveBackupFile>[];
     }
 
-    final String? folderId =
-    await getOrCreateBackupFolder();
+    final String? folderId = await getBackupFolderId();
 
     if (folderId == null) {
       return <GoogleDriveBackupFile>[];
     }
 
-    final String query =
-        "'$folderId' in parents "
-        "and trashed = false";
+    try {
+      final drive.FileList result = await driveApi.files.list(
+        q: "'$folderId' in parents and trashed = false",
+        spaces: 'drive',
+        orderBy: 'createdTime desc',
+        pageSize: 100,
+        $fields: 'files(id,name,createdTime,size,mimeType)',
+      );
 
-    final Uri uri = Uri.parse(
-      '$_driveApiBase/files'
-          '?q=${Uri.encodeQueryComponent(query)}'
-          '&spaces=drive'
-          '&orderBy=createdTime desc'
-          '&pageSize=100'
-          '&fields=files(id,name,mimeType,size,createdTime)',
-    );
+      final List<GoogleDriveBackupFile> backups =
+      <GoogleDriveBackupFile>[];
 
-    final http.Response response = await http.get(
-      uri,
-      headers: headers,
-    );
+      for (final drive.File file in result.files ?? <drive.File>[]) {
+        // Only show our SQLite database backup files.
+        final String name = file.name ?? '';
 
-    if (response.statusCode != 200) {
-      throw GoogleDriveException(
-        'Unable to list Google Drive backups.',
-        statusCode: response.statusCode,
-        responseBody: response.body,
+        if (!name.toLowerCase().endsWith('.db')) {
+          continue;
+        }
+
+        if (file.id == null || file.id!.isEmpty) {
+          continue;
+        }
+
+        backups.add(
+          GoogleDriveBackupFile(
+            id: file.id!,
+            name: name,
+            createdTime: file.createdTime,
+            size: file.size == null
+                ? null
+                : int.tryParse(file.size!),
+          ),
+        );
+      }
+
+      return backups;
+    } catch (e) {
+      throw GoogleDriveBackupException(
+        'Unable to list Google Drive backups: $e',
       );
     }
-
-    final Map<String, dynamic> data =
-    jsonDecode(response.body) as Map<String, dynamic>;
-
-    final List<dynamic> files =
-        data['files'] as List<dynamic>? ?? <dynamic>[];
-
-    return files
-        .map(
-          (dynamic item) =>
-          GoogleDriveBackupFile.fromJson(
-            item as Map<String, dynamic>,
-          ),
-    )
-        .toList();
   }
 
-  // ----------------------------------------------------------
-  // DOWNLOAD BACKUP FILE
-  //
-  // Downloads the selected Google Drive backup and saves it
-  // to the supplied local destination.
-  // ----------------------------------------------------------
-
+  /// Downloads a selected backup file from Google Drive.
+  ///
+  /// The downloaded database is written to [destinationFile].
   Future<File?> downloadBackupFile({
     required String fileId,
     required File destinationFile,
   }) async {
-    final headers =
-    await GoogleAuthService.getDriveAuthorizationHeaders(
-      requestPermission: true,
-    );
+    final drive.DriveApi? driveApi = await _getDriveApi();
 
-    if (headers == null) {
+    if (driveApi == null) {
       return null;
     }
 
-    final Uri uri = Uri.parse(
-      '$_driveApiBase/files/$fileId?alt=media',
-    );
+    try {
+      // Ask Google Drive for the complete file contents.
+      final drive.Media media = await driveApi.files.get(
+        fileId,
+        downloadOptions: drive.DownloadOptions.fullMedia,
+      ) as drive.Media;
 
-    final http.Response response = await http.get(
-      uri,
-      headers: headers,
-    );
+      // Ensure the destination directory exists.
+      await destinationFile.parent.create(
+        recursive: true,
+      );
 
-    if (response.statusCode != 200) {
-      throw GoogleDriveException(
-        'Unable to download Google Drive backup.',
-        statusCode: response.statusCode,
-        responseBody: response.body,
+      // Write the downloaded database to local storage.
+      final IOSink output = destinationFile.openWrite();
+
+      try {
+        await media.stream.pipe(output);
+      } finally {
+        await output.close();
+      }
+
+      return destinationFile;
+    } catch (e) {
+      throw GoogleDriveBackupException(
+        'Unable to download the backup from Google Drive: $e',
       );
     }
-
-    await destinationFile.parent.create(
-      recursive: true,
-    );
-
-    await destinationFile.writeAsBytes(
-      response.bodyBytes,
-      flush: true,
-    );
-
-    return destinationFile;
   }
 
-  // ----------------------------------------------------------
-  // DELETE BACKUP FILE
-  //
-  // Used later by backup-retention management.
-  // ----------------------------------------------------------
-
+  /// Deletes one backup file from Google Drive.
   Future<bool> deleteBackupFile({
     required String fileId,
   }) async {
-    final headers =
-    await GoogleAuthService.getDriveAuthorizationHeaders(
-      requestPermission: true,
-    );
+    final drive.DriveApi? driveApi = await _getDriveApi();
 
-    if (headers == null) {
+    if (driveApi == null) {
       return false;
     }
 
-    final Uri uri = Uri.parse(
-      '$_driveApiBase/files/$fileId',
-    );
-
-    final http.Response response =
-    await http.delete(
-      uri,
-      headers: headers,
-    );
-
-    if (response.statusCode == 204 ||
-        response.statusCode == 200) {
+    try {
+      await driveApi.files.delete(fileId);
       return true;
+    } catch (e) {
+      throw GoogleDriveBackupException(
+        'Unable to delete the Google Drive backup: $e',
+      );
     }
-
-    throw GoogleDriveException(
-      'Unable to delete Google Drive backup.',
-      statusCode: response.statusCode,
-      responseBody: response.body,
-    );
   }
 }
 
-// ============================================================
-// GOOGLE DRIVE BACKUP FILE MODEL
-// ============================================================
+/// Exception thrown when a Google Drive backup operation fails.
+class GoogleDriveBackupException implements Exception {
+  GoogleDriveBackupException(this.message);
 
-class GoogleDriveBackupFile {
-  final String id;
-  final String name;
-  final String? mimeType;
-  final int? size;
-  final DateTime? createdTime;
-
-  const GoogleDriveBackupFile({
-    required this.id,
-    required this.name,
-    this.mimeType,
-    this.size,
-    this.createdTime,
-  });
-
-  factory GoogleDriveBackupFile.fromJson(
-      Map<String, dynamic> json,
-      ) {
-    return GoogleDriveBackupFile(
-      id: json['id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      mimeType: json['mimeType'] as String?,
-      size: _parseSize(json['size']),
-      createdTime: _parseDateTime(
-        json['createdTime'],
-      ),
-    );
-  }
-
-  static int? _parseSize(dynamic value) {
-    if (value == null) {
-      return null;
-    }
-
-    if (value is int) {
-      return value;
-    }
-
-    return int.tryParse(
-      value.toString(),
-    );
-  }
-
-  static DateTime? _parseDateTime(
-      dynamic value,
-      ) {
-    if (value == null) {
-      return null;
-    }
-
-    return DateTime.tryParse(
-      value.toString(),
-    );
-  }
-}
-
-// ============================================================
-// GOOGLE DRIVE EXCEPTION
-// ============================================================
-
-class GoogleDriveException implements Exception {
   final String message;
-  final int? statusCode;
-  final String? responseBody;
-
-  const GoogleDriveException(
-      this.message, {
-        this.statusCode,
-        this.responseBody,
-      });
 
   @override
-  String toString() {
-    if (statusCode == null) {
-      return 'GoogleDriveException: $message';
-    }
-
-    return 'GoogleDriveException: $message '
-        '(HTTP $statusCode)';
-  }
+  String toString() => message;
 }

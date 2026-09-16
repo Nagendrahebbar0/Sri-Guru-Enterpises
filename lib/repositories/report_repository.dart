@@ -8,8 +8,9 @@
 // • Existing module repositories are not modified.
 // • Customers are not date-filtered because the current customer table has
 //   no customer-created date.
-// • Fleet Services, Emission Tests, Car Documents and Accessories are filtered
-//   using their existing date columns.
+// • Date-based modules are filtered using their existing date columns.
+// • Tyre Stock is treated as current stock data and is not date-filtered.
+// • Tyre Billing and Alignment Billing are filtered by their bill date.
 // *****************************************************************************
 
 import 'package:sqflite/sqflite.dart';
@@ -23,8 +24,7 @@ class ReportRepository {
 
   ReportRepository({
     DatabaseHelper? databaseHelper,
-  }) : _databaseHelper =
-      databaseHelper ?? DatabaseHelper.instance;
+  }) : _databaseHelper = databaseHelper ?? DatabaseHelper.instance;
 
   // ===========================================================================
   // LOAD COMPLETE REPORT
@@ -33,18 +33,16 @@ class ReportRepository {
   Future<ReportData> getReportData({
     required ReportDateRange dateRange,
   }) async {
-    final Database database =
-    await _databaseHelper.database;
+    final Database database = await _databaseHelper.database;
 
     // -------------------------------------------------------------------------
     // CUSTOMERS
     //
     // Customers are not date-filtered because the current customers table
-    // does not contain a created/registration date.
+    // does not contain a customer-created/registration date.
     // -------------------------------------------------------------------------
 
-    final List<Map<String, dynamic>> customers =
-    await database.query(
+    final List<Map<String, dynamic>> customers = await database.query(
       'customers',
       orderBy: 'id DESC',
     );
@@ -76,10 +74,7 @@ class ReportRepository {
     // -------------------------------------------------------------------------
     // CAR DOCUMENTS
     //
-    // The report is filtered by the document DATE, not EXPIRY DATE.
-    //
-    // Expiry reminders are a separate feature and should not change what
-    // belongs to a historical report period.
+    // The report is filtered by the document date, not expiry date.
     // -------------------------------------------------------------------------
 
     final List<Map<String, dynamic>> carDocuments =
@@ -102,12 +97,66 @@ class ReportRepository {
       dateRange: dateRange,
     );
 
+    // -------------------------------------------------------------------------
+    // TYRE STOCK
+    //
+    // Tyre Stock represents the current stock position rather than a
+    // historical bill transaction.
+    //
+    // Therefore it is loaded as current stock and is NOT restricted by the
+    // selected report date.
+    // -------------------------------------------------------------------------
+
+    final List<Map<String, dynamic>> tyreStocks = await database.query(
+      'tyre_stocks',
+      orderBy: 'id DESC',
+    );
+
+    // -------------------------------------------------------------------------
+    // TYRE BILLING
+    //
+    // Tyre bills are historical transactions, so they are filtered using
+    // their invoice date.
+    // -------------------------------------------------------------------------
+
+    final List<Map<String, dynamic>> tyreBills =
+    await _queryByDateRange(
+      database: database,
+      tableName: 'tyre_bills',
+      dateColumn: 'date',
+      dateRange: dateRange,
+    );
+
+    // -------------------------------------------------------------------------
+    // ALIGNMENT BILLING
+    //
+    // Alignment bills follow the same reporting treatment as Tyre Billing.
+    // They are filtered using the Alignment Bill date.
+    //
+    // No GST is added here because Alignment Billing is a non-GST module.
+    // -------------------------------------------------------------------------
+
+    final List<Map<String, dynamic>> alignmentBills =
+    await _queryByDateRange(
+      database: database,
+      tableName: 'alignment_bills',
+      dateColumn: 'date',
+      dateRange: dateRange,
+    );
+
+    // -------------------------------------------------------------------------
+    // RETURN COMPLETE REPORT DATA
+    // -------------------------------------------------------------------------
+
     return ReportData(
       customers: customers,
       fleetServices: fleetServices,
       emissionTests: emissionTests,
       carDocuments: carDocuments,
       accessories: accessories,
+      tyreStocks: tyreStocks,
+      tyreBills: tyreBills,
+      alignmentBills: alignmentBills,
     );
   }
 
@@ -124,14 +173,13 @@ class ReportRepository {
     // -------------------------------------------------------------------------
     // SQLite stores the application dates as ISO-style strings.
     //
-    // We use:
+    // From:
+    //   selected date at 00:00:00
     //
-    // >= From Date 00:00:00
-    // <
-    // To Date + 1 day 00:00:00
+    // To:
+    //   day after the selected end date at 00:00:00
     //
-    // This makes the To Date completely inclusive, including records that
-    // contain a time later in that day.
+    // Using "< toExclusive" makes the selected end date fully inclusive.
     // -------------------------------------------------------------------------
 
     final DateTime from = dateRange.from;
@@ -140,16 +188,14 @@ class ReportRepository {
       const Duration(days: 1),
     );
 
-    final String fromValue =
-    from.toIso8601String();
+    final String fromValue = from.toIso8601String();
 
-    final String toExclusiveValue =
-    toExclusive.toIso8601String();
+    final String toExclusiveValue = toExclusive.toIso8601String();
 
     return database.query(
       tableName,
       where: '$dateColumn >= ? AND $dateColumn < ?',
-      whereArgs: [
+      whereArgs: <Object?>[
         fromValue,
         toExclusiveValue,
       ],
@@ -160,13 +206,16 @@ class ReportRepository {
   // ===========================================================================
   // INDIVIDUAL DATA LOADERS
   //
-  // These methods are useful later if the Report screen needs to refresh
-  // individual sections without loading the complete report.
+  // These methods allow individual report sections to be loaded later without
+  // changing the existing module repositories.
   // ===========================================================================
 
+  // ---------------------------------------------------------------------------
+  // CUSTOMERS
+  // ---------------------------------------------------------------------------
+
   Future<List<Map<String, dynamic>>> getCustomers() async {
-    final Database database =
-    await _databaseHelper.database;
+    final Database database = await _databaseHelper.database;
 
     return database.query(
       'customers',
@@ -174,11 +223,14 @@ class ReportRepository {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // FLEET SERVICES
+  // ---------------------------------------------------------------------------
+
   Future<List<Map<String, dynamic>>> getFleetServices(
       ReportDateRange dateRange,
       ) async {
-    final Database database =
-    await _databaseHelper.database;
+    final Database database = await _databaseHelper.database;
 
     return _queryByDateRange(
       database: database,
@@ -188,11 +240,14 @@ class ReportRepository {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // EMISSION TESTS
+  // ---------------------------------------------------------------------------
+
   Future<List<Map<String, dynamic>>> getEmissionTests(
       ReportDateRange dateRange,
       ) async {
-    final Database database =
-    await _databaseHelper.database;
+    final Database database = await _databaseHelper.database;
 
     return _queryByDateRange(
       database: database,
@@ -202,11 +257,14 @@ class ReportRepository {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // CAR DOCUMENTS
+  // ---------------------------------------------------------------------------
+
   Future<List<Map<String, dynamic>>> getCarDocuments(
       ReportDateRange dateRange,
       ) async {
-    final Database database =
-    await _databaseHelper.database;
+    final Database database = await _databaseHelper.database;
 
     return _queryByDateRange(
       database: database,
@@ -216,15 +274,65 @@ class ReportRepository {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // ACCESSORIES
+  // ---------------------------------------------------------------------------
+
   Future<List<Map<String, dynamic>>> getAccessories(
       ReportDateRange dateRange,
       ) async {
-    final Database database =
-    await _databaseHelper.database;
+    final Database database = await _databaseHelper.database;
 
     return _queryByDateRange(
       database: database,
       tableName: 'accessories',
+      dateColumn: 'date',
+      dateRange: dateRange,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // TYRE STOCK
+  // ---------------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> getTyreStocks() async {
+    final Database database = await _databaseHelper.database;
+
+    return database.query(
+      'tyre_stocks',
+      orderBy: 'id DESC',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // TYRE BILLING
+  // ---------------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> getTyreBills(
+      ReportDateRange dateRange,
+      ) async {
+    final Database database = await _databaseHelper.database;
+
+    return _queryByDateRange(
+      database: database,
+      tableName: 'tyre_bills',
+      dateColumn: 'date',
+      dateRange: dateRange,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // ALIGNMENT BILLING
+  // ---------------------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> getAlignmentBills(
+      ReportDateRange dateRange,
+      ) async {
+    final Database database = await _databaseHelper.database;
+
+    return _queryByDateRange(
+      database: database,
+      tableName: 'alignment_bills',
       dateColumn: 'date',
       dateRange: dateRange,
     );

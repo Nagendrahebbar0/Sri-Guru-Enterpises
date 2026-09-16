@@ -1,3 +1,19 @@
+// ****************************************************************************
+// FILE        : report_screen.dart
+// PROJECT     : Sri Guru Enterprises
+// DESCRIPTION : Report dashboard with date filtering and PDF/Excel export.
+//
+// REPORT MODULES:
+// 1. Customers
+// 2. Fleet Services
+// 3. Emission Tests
+// 4. Car Documents
+// 5. Accessories
+// 6. Tyre Stock
+// 7. Tyre Billing
+// 8. Alignment Billing
+// ****************************************************************************
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -7,7 +23,7 @@ import '../services/excel_export_service.dart';
 import '../services/pdf_export_service.dart';
 import '../services/report_date_filter_service.dart';
 
-/// Report screen for viewing and exporting Sri Guru Enterprises data.
+/// Displays filtered enterprise reports and provides PDF/Excel export.
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
 
@@ -16,38 +32,74 @@ class ReportScreen extends StatefulWidget {
 }
 
 class _ReportScreenState extends State<ReportScreen> {
+  // ---------------------------------------------------------------------------
+  // REPOSITORY
+  // ---------------------------------------------------------------------------
+
   final ReportRepository _repository = ReportRepository();
 
-  ReportDateFilter _selectedFilter = ReportDateFilter.daily;
+  // ---------------------------------------------------------------------------
+  // REPORT FILTER STATE
+  // ---------------------------------------------------------------------------
 
-  DateTime _selectedDate = DateTime.now();
+  ReportDateFilter _selectedFilter =
+      ReportDateFilter.daily;
+
+  DateTime _selectedDate =
+  DateTime.now();
+
   DateTime? _customFrom;
   DateTime? _customTo;
+
+  // ---------------------------------------------------------------------------
+  // REPORT DATA
+  // ---------------------------------------------------------------------------
 
   ReportDateRange? _dateRange;
   ReportData? _reportData;
 
+  // ---------------------------------------------------------------------------
+  // LOADING STATE
+  // ---------------------------------------------------------------------------
+
   bool _isLoading = false;
   bool _isExporting = false;
 
-  final DateFormat _displayDateFormat = DateFormat('dd/MM/yyyy');
+  // ---------------------------------------------------------------------------
+  // DATE FORMAT
+  // ---------------------------------------------------------------------------
+
+  final DateFormat _displayDateFormat =
+  DateFormat('dd/MM/yyyy');
+
+  // ===========================================================================
+  // INITIALIZATION
+  // ===========================================================================
 
   @override
   void initState() {
     super.initState();
+
+    // Load the default Daily report.
     _loadReport();
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // REPORT LOADING
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Future<void> _loadReport() async {
+    // Prevent overlapping report loads.
+    if (_isLoading) {
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
 
     try {
+      // Calculate the selected report period.
       final ReportDateRange range =
       ReportDateFilterService.getDateRange(
         filter: _selectedFilter,
@@ -56,6 +108,7 @@ class _ReportScreenState extends State<ReportScreen> {
         customTo: _customTo,
       );
 
+      // Read report data from SQLite.
       final ReportData data =
       await _repository.getReportData(
         dateRange: range,
@@ -86,9 +139,9 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // FILTER
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Future<void> _changeFilter(
       ReportDateFilter? filter,
@@ -97,6 +150,7 @@ class _ReportScreenState extends State<ReportScreen> {
       return;
     }
 
+    // Custom filter requires selecting a date range.
     if (filter == ReportDateFilter.custom) {
       final bool selected =
       await _selectCustomDateRange();
@@ -113,6 +167,10 @@ class _ReportScreenState extends State<ReportScreen> {
     await _loadReport();
   }
 
+  // ===========================================================================
+  // CUSTOM DATE RANGE
+  // ===========================================================================
+
   Future<bool> _selectCustomDateRange() async {
     DateTime firstDate =
         _customFrom ?? DateTime.now();
@@ -120,6 +178,7 @@ class _ReportScreenState extends State<ReportScreen> {
     DateTime lastDate =
         _customTo ?? DateTime.now();
 
+    // Make sure the end date is not before the start date.
     if (lastDate.isBefore(firstDate)) {
       lastDate = firstDate;
     }
@@ -142,12 +201,19 @@ class _ReportScreenState extends State<ReportScreen> {
     }
 
     setState(() {
-      _customFrom = _dateOnly(picked.start);
-      _customTo = _dateOnly(picked.end);
+      _customFrom =
+          _dateOnly(picked.start);
+
+      _customTo =
+          _dateOnly(picked.end);
     });
 
     return true;
   }
+
+  // ===========================================================================
+  // SINGLE DATE
+  // ===========================================================================
 
   Future<void> _selectSingleDate() async {
     final DateTime? picked =
@@ -164,18 +230,21 @@ class _ReportScreenState extends State<ReportScreen> {
     }
 
     setState(() {
-      _selectedDate = _dateOnly(picked);
+      _selectedDate =
+          _dateOnly(picked);
     });
 
     await _loadReport();
   }
 
-  // ---------------------------------------------------------------------------
-  // EXCEL
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // EXCEL EXPORT
+  // ===========================================================================
 
   Future<void> _exportExcel() async {
-    if (_reportData == null || _dateRange == null) {
+    if (_reportData == null ||
+        _dateRange == null ||
+        _isExporting) {
       return;
     }
 
@@ -185,7 +254,8 @@ class _ReportScreenState extends State<ReportScreen> {
 
     try {
       final file =
-      await ExcelExportService.instance.exportReport(
+      await ExcelExportService.instance
+          .exportReport(
         reportData: _reportData!,
         dateRange: _dateRange!,
       );
@@ -195,7 +265,8 @@ class _ReportScreenState extends State<ReportScreen> {
       }
 
       _showMessage(
-        'Excel report created successfully.\n${file.path}',
+        'Excel report created successfully.\n'
+            '${file.path}',
       );
     } catch (error) {
       if (!mounted) {
@@ -215,8 +286,14 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
+  // ===========================================================================
+  // EXCEL SHARE
+  // ===========================================================================
+
   Future<void> _shareExcel() async {
-    if (_reportData == null || _dateRange == null) {
+    if (_reportData == null ||
+        _dateRange == null ||
+        _isExporting) {
       return;
     }
 
@@ -225,9 +302,18 @@ class _ReportScreenState extends State<ReportScreen> {
     });
 
     try {
-      await ExcelExportService.instance.shareReport(
+      await ExcelExportService.instance
+          .shareReport(
         reportData: _reportData!,
         dateRange: _dateRange!,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Excel report is ready to share.',
       );
     } catch (error) {
       if (!mounted) {
@@ -247,12 +333,14 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // PDF
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // PDF EXPORT
+  // ===========================================================================
 
   Future<void> _exportPdf() async {
-    if (_reportData == null || _dateRange == null) {
+    if (_reportData == null ||
+        _dateRange == null ||
+        _isExporting) {
       return;
     }
 
@@ -261,7 +349,9 @@ class _ReportScreenState extends State<ReportScreen> {
     });
 
     try {
-      final file = await PdfExportService.instance.exportReport(
+      final file =
+      await PdfExportService.instance
+          .exportReport(
         reportData: _reportData!,
         dateRange: _dateRange!,
       );
@@ -271,7 +361,8 @@ class _ReportScreenState extends State<ReportScreen> {
       }
 
       _showMessage(
-        'PDF report created successfully.\n${file.path}',
+        'PDF report created successfully.\n'
+            '${file.path}',
       );
     } catch (error) {
       if (!mounted) {
@@ -291,8 +382,14 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
+  // ===========================================================================
+  // PDF SHARE
+  // ===========================================================================
+
   Future<void> _sharePdf() async {
-    if (_reportData == null || _dateRange == null) {
+    if (_reportData == null ||
+        _dateRange == null ||
+        _isExporting) {
       return;
     }
 
@@ -301,9 +398,18 @@ class _ReportScreenState extends State<ReportScreen> {
     });
 
     try {
-      await PdfExportService.instance.shareReport(
+      await PdfExportService.instance
+          .shareReport(
         reportData: _reportData!,
         dateRange: _dateRange!,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'PDF report is ready to share.',
       );
     } catch (error) {
       if (!mounted) {
@@ -323,9 +429,9 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -334,6 +440,11 @@ class _ReportScreenState extends State<ReportScreen> {
         title: const Text('Reports'),
         centerTitle: true,
       ),
+
+      // --------------------------------------------------------------
+      // BODY
+      // --------------------------------------------------------------
+
       body: _isLoading
           ? const Center(
         child: CircularProgressIndicator(),
@@ -345,12 +456,19 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Widget _buildBody() {
-    final ReportData? data = _reportData;
+  // ===========================================================================
+  // BODY
+  // ===========================================================================
 
-    if (data == null || _dateRange == null) {
+  Widget _buildBody() {
+    final ReportData? data =
+        _reportData;
+
+    if (data == null ||
+        _dateRange == null) {
       return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
+        physics:
+        const AlwaysScrollableScrollPhysics(),
         children: const <Widget>[
           SizedBox(height: 250),
           Center(
@@ -363,31 +481,48 @@ class _ReportScreenState extends State<ReportScreen> {
     }
 
     return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16),
+      physics:
+      const AlwaysScrollableScrollPhysics(),
+      padding:
+      const EdgeInsets.all(16),
       children: <Widget>[
+        // Report period filter.
         _buildFilterCard(),
+
         const SizedBox(height: 16),
+
+        // Selected date range.
         _buildDateRangeCard(),
+
         const SizedBox(height: 16),
+
+        // Summary.
         _buildSummaryCard(data),
+
         const SizedBox(height: 16),
+
+        // Individual module counts.
         _buildModuleCards(data),
+
         const SizedBox(height: 20),
-        _buildExportButtons(),
+
+        // Export and sharing actions.
+        _buildExportSection(),
+
         const SizedBox(height: 20),
       ],
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // FILTER CARD
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Widget _buildFilterCard() {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+        const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment:
           CrossAxisAlignment.start,
@@ -396,53 +531,88 @@ class _ReportScreenState extends State<ReportScreen> {
               'Report Period',
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                FontWeight.bold,
               ),
             ),
+
             const SizedBox(height: 12),
-            DropdownButtonFormField<ReportDateFilter>(
-              initialValue: _selectedFilter,
-              decoration: const InputDecoration(
-                labelText: 'Select Period',
-                border: OutlineInputBorder(),
+
+            DropdownButtonFormField<
+                ReportDateFilter>(
+              initialValue:
+              _selectedFilter,
+
+              decoration:
+              const InputDecoration(
+                labelText:
+                'Select Period',
+                border:
+                OutlineInputBorder(),
               ),
-              items: const <DropdownMenuItem<ReportDateFilter>>[
+
+              items: const <
+                  DropdownMenuItem<
+                      ReportDateFilter>>[
                 DropdownMenuItem(
-                  value: ReportDateFilter.daily,
-                  child: Text('Daily'),
+                  value:
+                  ReportDateFilter.daily,
+                  child:
+                  Text('Daily'),
                 ),
                 DropdownMenuItem(
-                  value: ReportDateFilter.weekly,
-                  child: Text('Weekly'),
+                  value:
+                  ReportDateFilter.weekly,
+                  child:
+                  Text('Weekly'),
                 ),
                 DropdownMenuItem(
-                  value: ReportDateFilter.monthly,
-                  child: Text('Monthly'),
+                  value:
+                  ReportDateFilter.monthly,
+                  child:
+                  Text('Monthly'),
                 ),
                 DropdownMenuItem(
-                  value: ReportDateFilter.quarterly,
-                  child: Text('Quarterly'),
+                  value:
+                  ReportDateFilter.quarterly,
+                  child:
+                  Text('Quarterly'),
                 ),
                 DropdownMenuItem(
-                  value: ReportDateFilter.yearly,
-                  child: Text('Yearly'),
+                  value:
+                  ReportDateFilter.yearly,
+                  child:
+                  Text('Yearly'),
                 ),
                 DropdownMenuItem(
-                  value: ReportDateFilter.custom,
-                  child: Text('Custom Date'),
+                  value:
+                  ReportDateFilter.custom,
+                  child:
+                  Text('Custom Date'),
                 ),
               ],
-              onChanged: _changeFilter,
+
+              onChanged:
+              _isExporting
+                  ? null
+                  : _changeFilter,
             ),
+
             const SizedBox(height: 12),
+
             OutlinedButton.icon(
-              onPressed: _selectedFilter ==
+              onPressed:
+              _isExporting
+                  ? null
+                  : _selectedFilter ==
                   ReportDateFilter.custom
                   ? _selectCustomDateRange
                   : _selectSingleDate,
+
               icon: const Icon(
                 Icons.calendar_month,
               ),
+
               label: Text(
                 _selectedFilter ==
                     ReportDateFilter.custom
@@ -456,23 +626,27 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // DATE RANGE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // DATE RANGE CARD
+  // ===========================================================================
 
   Widget _buildDateRangeCard() {
-    final ReportDateRange range = _dateRange!;
+    final ReportDateRange range =
+    _dateRange!;
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+        const EdgeInsets.all(16),
         child: Row(
           children: <Widget>[
             const Icon(
               Icons.date_range,
               size: 30,
             ),
+
             const SizedBox(width: 12),
+
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -481,15 +655,20 @@ class _ReportScreenState extends State<ReportScreen> {
                   const Text(
                     'Report Date Range',
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                      FontWeight.bold,
                     ),
                   ),
+
                   const SizedBox(height: 4),
+
                   Text(
                     '${_displayDateFormat.format(range.from)}'
                         ' - '
                         '${_displayDateFormat.format(range.to)}',
-                    style: const TextStyle(
+
+                    style:
+                    const TextStyle(
                       fontSize: 16,
                     ),
                   ),
@@ -502,33 +681,39 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // SUMMARY
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // SUMMARY CARD
+  // ===========================================================================
 
   Widget _buildSummaryCard(
       ReportData data,
       ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding:
+        const EdgeInsets.all(18),
         child: Column(
           children: <Widget>[
             const Text(
               'Report Summary',
               style: TextStyle(
                 fontSize: 20,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                FontWeight.bold,
               ),
             ),
+
             const SizedBox(height: 16),
+
             Text(
               '${data.totalRecords}',
               style: const TextStyle(
                 fontSize: 36,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                FontWeight.bold,
               ),
             ),
+
             const Text(
               'Total Records',
               style: TextStyle(
@@ -541,9 +726,9 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // MODULE CARDS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   Widget _buildModuleCards(
       ReportData data,
@@ -552,32 +737,71 @@ class _ReportScreenState extends State<ReportScreen> {
       children: <Widget>[
         _buildModuleCard(
           title: 'Customers',
-          count: data.customers.length,
+          count:
+          data.customers.length,
           icon: Icons.people,
         ),
+
         _buildModuleCard(
           title: 'Fleet Services',
-          count: data.fleetServices.length,
-          icon: Icons.car_repair,
+          count:
+          data.fleetServices.length,
+          icon:
+          Icons.car_repair,
         ),
+
         _buildModuleCard(
           title: 'Emission Tests',
-          count: data.emissionTests.length,
+          count:
+          data.emissionTests.length,
           icon: Icons.air,
         ),
+
         _buildModuleCard(
           title: 'Car Documents',
-          count: data.carDocuments.length,
+          count:
+          data.carDocuments.length,
           icon: Icons.description,
         ),
+
         _buildModuleCard(
           title: 'Accessories',
-          count: data.accessories.length,
-          icon: Icons.inventory_2,
+          count:
+          data.accessories.length,
+          icon:
+          Icons.inventory_2,
+        ),
+
+        _buildModuleCard(
+          title: 'Tyre Stock',
+          count:
+          data.tyreStocks.length,
+          icon:
+          Icons.tire_repair_outlined,
+        ),
+
+        _buildModuleCard(
+          title: 'Tyre Billing',
+          count:
+          data.tyreBills.length,
+          icon:
+          Icons.receipt_long_outlined,
+        ),
+
+        _buildModuleCard(
+          title: 'Alignment Billing',
+          count:
+          data.alignmentBills.length,
+          icon:
+          Icons.car_repair_outlined,
         ),
       ],
     );
   }
+
+  // ===========================================================================
+  // SINGLE MODULE CARD
+  // ===========================================================================
 
   Widget _buildModuleCard({
     required String title,
@@ -585,109 +809,214 @@ class _ReportScreenState extends State<ReportScreen> {
     required IconData icon,
   }) {
     return Card(
-      margin: const EdgeInsets.only(
+      margin:
+      const EdgeInsets.only(
         bottom: 10,
       ),
       child: ListTile(
         leading: CircleAvatar(
           child: Icon(icon),
         ),
+
         title: Text(
           title,
           style: const TextStyle(
-            fontWeight: FontWeight.w600,
+            fontWeight:
+            FontWeight.w600,
           ),
         ),
+
         trailing: Text(
           count.toString(),
           style: const TextStyle(
             fontSize: 20,
-            fontWeight: FontWeight.bold,
+            fontWeight:
+            FontWeight.bold,
           ),
         ),
       ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // EXPORT BUTTONS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // EXPORT SECTION
+  // ===========================================================================
 
-  Widget _buildExportButtons() {
-    return Column(
-      crossAxisAlignment:
-      CrossAxisAlignment.stretch,
-      children: <Widget>[
-        SizedBox(
-          height: 52,
-          child: ElevatedButton.icon(
-            onPressed:
-            _isExporting ? null : _exportExcel,
-            icon: const Icon(
+  Widget _buildExportSection() {
+    return Card(
+      child: Padding(
+        padding:
+        const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment:
+          CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text(
+              'Export & Share',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight:
+                FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 6),
+
+            const Text(
+              'Generate the current report as PDF or Excel.',
+              style: TextStyle(
+                color: Colors.grey,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ----------------------------------------------------------
+            // EXPORT EXCEL
+            // ----------------------------------------------------------
+
+            _buildExportButton(
+              icon:
               Icons.table_view,
-            ),
-            label: const Text(
+              label:
               'Export Excel',
+              onPressed:
+              _exportExcel,
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed:
-            _isExporting ? null : _shareExcel,
-            icon: const Icon(
-              Icons.share,
-            ),
-            label: const Text(
+
+            const SizedBox(height: 10),
+
+            // ----------------------------------------------------------
+            // SHARE EXCEL
+            // ----------------------------------------------------------
+
+            _buildExportButton(
+              icon: Icons.share,
+              label:
               'Share Excel',
+              outlined: true,
+              onPressed:
+              _shareExcel,
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 52,
-          child: ElevatedButton.icon(
-            onPressed:
-            _isExporting ? null : _exportPdf,
-            icon: const Icon(
+
+            const SizedBox(height: 10),
+
+            // ----------------------------------------------------------
+            // EXPORT PDF
+            // ----------------------------------------------------------
+
+            _buildExportButton(
+              icon:
               Icons.picture_as_pdf_outlined,
-            ),
-            label: const Text(
+              label:
               'Export PDF',
+              onPressed:
+              _exportPdf,
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 52,
-          child: OutlinedButton.icon(
-            onPressed:
-            _isExporting ? null : _sharePdf,
-            icon: const Icon(
+
+            const SizedBox(height: 10),
+
+            // ----------------------------------------------------------
+            // SHARE PDF
+            // ----------------------------------------------------------
+
+            _buildExportButton(
+              icon:
               Icons.picture_as_pdf_outlined,
-            ),
-            label: const Text(
+              label:
               'Share PDF',
+              outlined: true,
+              onPressed:
+              _sharePdf,
             ),
-          ),
+
+            // ----------------------------------------------------------
+            // EXPORT PROGRESS
+            // ----------------------------------------------------------
+
+            if (_isExporting) ...<Widget>[
+              const SizedBox(height: 16),
+
+              const Row(
+                children: <Widget>[
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child:
+                    CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+
+                  SizedBox(width: 10),
+
+                  Expanded(
+                    child: Text(
+                      'Preparing report...',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // HELPERS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // EXPORT BUTTON
+  // ===========================================================================
 
-  DateTime _dateOnly(DateTime date) {
+  Widget _buildExportButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool outlined = false,
+  }) {
+    final Widget button =
+    outlined
+        ? OutlinedButton.icon(
+      onPressed:
+      _isExporting
+          ? null
+          : onPressed,
+      icon: Icon(icon),
+      label: Text(label),
+    )
+        : ElevatedButton.icon(
+      onPressed:
+      _isExporting
+          ? null
+          : onPressed,
+      icon: Icon(icon),
+      label: Text(label),
+    );
+
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: button,
+    );
+  }
+
+  // ===========================================================================
+  // DATE ONLY
+  // ===========================================================================
+
+  DateTime _dateOnly(
+      DateTime date,
+      ) {
     return DateTime(
       date.year,
       date.month,
       date.day,
     );
   }
+
+  // ===========================================================================
+  // MESSAGE
+  // ===========================================================================
 
   void _showMessage(
       String message, {
@@ -697,9 +1026,12 @@ class _ReportScreenState extends State<ReportScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
+          content:
+          Text(message),
           backgroundColor:
-          isError ? Colors.red : null,
+          isError
+              ? Colors.red
+              : null,
         ),
       );
   }

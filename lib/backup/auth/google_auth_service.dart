@@ -11,7 +11,8 @@
 // - Firebase is NOT used.
 // - Google Drive authorization is requested separately.
 // ============================================================
-
+import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:googleapis_auth/googleapis_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class GoogleAuthService {
@@ -291,6 +292,53 @@ class GoogleAuthService {
   static Future<void> _ensureInitialized() async {
     if (!_isInitialized) {
       await initialize();
+    }
+  }
+
+  // ==========================================================
+  // GET GOOGLE API AUTH CLIENT
+  //
+  // Used by Google Drive Provider to communicate with the
+  // Google Drive API.
+  // ==========================================================
+
+  static Future<AuthClient?> getDriveAuthClient({
+    bool requestPermission = false,
+  }) async {
+    await _ensureInitialized();
+
+    final GoogleSignInAccount? account = _currentUser;
+
+    if (account == null) {
+      return null;
+    }
+
+    try {
+      GoogleSignInClientAuthorization? authorization;
+
+      if (requestPermission) {
+        authorization = await account
+            .authorizationClient
+            .authorizeScopes(
+          driveScopes,
+        );
+      } else {
+        authorization = await account
+            .authorizationClient
+            .authorizationForScopes(
+          driveScopes,
+        );
+      }
+
+      if (authorization == null) {
+        return null;
+      }
+
+      return authorization.authClient(
+        scopes: driveScopes,
+      );
+    } catch (_) {
+      return null;
     }
   }
 }
