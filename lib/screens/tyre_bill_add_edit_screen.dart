@@ -1,0 +1,1654 @@
+// ============================================================
+// FILE: tyre_bill_add_edit_screen.dart
+// PURPOSE: Add/Edit/Duplicate Tyre Billing screen.
+// ============================================================
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:sqflite/sqflite.dart';
+
+import '../core/database/database_helper.dart';
+import '../models/customer.dart';
+import '../models/tyre_bill.dart';
+import '../models/tyre_bill_item.dart';
+import '../models/tyre_stock.dart';
+import '../repositories/customer_repository.dart';
+import '../repositories/tyre_bill_repository.dart';
+import '../repositories/tyre_stock_repository.dart';
+import 'add_edit_customer_screen.dart';
+import 'gst_verification_screen.dart';
+import '../models/gst_taxpayer_details.dart';
+
+/// Screen used to create, edit or duplicate a tyre bill.
+class TyreBillAddEditScreen extends StatefulWidget {
+  final TyreBill? bill;
+  final bool isDuplicate;
+
+  const TyreBillAddEditScreen({
+    super.key,
+    this.bill,
+    this.isDuplicate = false,
+  });
+
+  @override
+  State<TyreBillAddEditScreen> createState() =>
+      _TyreBillAddEditScreenState();
+}
+
+class _TyreBillAddEditScreenState
+    extends State<TyreBillAddEditScreen> {
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  final TyreBillRepository _billRepository =
+  TyreBillRepository();
+  final CustomerRepository _customerRepository =
+  CustomerRepository();
+  final TyreStockRepository _stockRepository =
+  TyreStockRepository();
+  final DatabaseHelper _databaseHelper =
+      DatabaseHelper.instance;
+
+  final TextEditingController _invoiceController =
+  TextEditingController();
+  final TextEditingController _gstInvoiceController =
+  TextEditingController();
+  final TextEditingController _customerSearchController =
+  TextEditingController();
+  final TextEditingController _customerNameController =
+  TextEditingController();
+  final TextEditingController _customerNumberController =
+  TextEditingController();
+  final TextEditingController _addressController =
+  TextEditingController();
+  // Stores the GSTIN entered/verified for this tyre bill.
+  final TextEditingController _gstinController =
+  TextEditingController();
+
+// Stores the GST legal name fetched from the GST verification screen.
+  final TextEditingController _gstLegalNameController =
+  TextEditingController();
+
+// Stores the GST trade name fetched from the GST verification screen.
+  final TextEditingController _gstTradeNameController =
+  TextEditingController();
+  final TextEditingController _vehicleNumberController =
+  TextEditingController();
+
+  // Stores the vehicle odometer reading in kilometres.
+  final TextEditingController _kmsController =
+  TextEditingController();
+
+  final TextEditingController _remarksController =
+  TextEditingController();
+  final List<_TyreBillItemDraft> _items = <_TyreBillItemDraft>[];
+
+  // ============================================================
+  // GST VERIFICATION
+  // ============================================================
+  //
+  // Opens the free GST verification screen.
+  //
+  // The user verifies the GSTIN using the official GST portal,
+  // enters the CAPTCHA themselves, and imports the displayed
+  // taxpayer information back into this invoice.
+  //
+  // No paid GST API is used.
+  // No CAPTCHA is solved or bypassed.
+  // ============================================================
+
+  Future<void> _verifyGstDetails() async {
+    final String existingGstin =
+    _gstinController.text.trim().toUpperCase();
+
+    final GstTaxpayerDetails? details =
+    await Navigator.of(context).push<GstTaxpayerDetails>(
+      MaterialPageRoute<GstTaxpayerDetails>(
+        builder: (BuildContext context) {
+          return GstVerificationScreen(
+            initialGstin: existingGstin,
+          );
+        },
+      ),
+    );
+
+    if (!mounted || details == null) {
+      return;
+    }
+
+    setState(() {
+      // Store the verified GSTIN.
+      _gstinController.text = details.gstin;
+
+      // Store the GST legal name.
+      _gstLegalNameController.text = details.legalName;
+
+      // Store the GST trade name.
+      _gstTradeNameController.text = details.tradeName;
+
+      // Use the GST registered address when available.
+      if (details.address.trim().isNotEmpty) {
+        _addressController.text = details.address;
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'GST details imported successfully.',
+        ),
+      ),
+    );
+  }
+
+  Customer? _selectedCustomer;
+  DateTime _selectedDate = DateTime.now();
+  String _billType = 'GST Invoice';
+  String _paymentMethod = 'Cash';
+
+  double _totalGstRate = 0;
+  bool _loading = true;
+  bool _saving = false;
+
+  // First-ever invoice is entered manually.
+  // After at least one invoice exists, new invoices get the next
+  // invoice number automatically.
+  bool _isInvoiceAutoGenerated = false;
+
+  bool get _isEdit => widget.bill != null && !widget.isDuplicate;
+
+  bool get _isInvoiceLocked =>
+      _isEdit || widget.isDuplicate || _isInvoiceAutoGenerated;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await _loadGstRate();
+
+      if (widget.bill != null) {
+        await _loadExistingBill(widget.bill!);
+      } else {
+        // The very first invoice number must be entered manually.
+        // Once an invoice already exists, automatically generate
+        // the next invoice number (for example INV125 -> INV126).
+        final List<TyreBill> existingBills =
+        await _billRepository.getAllBills();
+
+        if (existingBills.isEmpty) {
+          _invoiceController.clear();
+          _isInvoiceAutoGenerated = false;
+        } else {
+          _invoiceController.text =
+          await _billRepository.generateNextInvoiceNumber();
+          _isInvoiceAutoGenerated = true;
+        }
+
+        _addEmptyItem();
+      }
+
+      // A duplicated invoice always receives a new automatically
+      // generated invoice number.
+      if (widget.isDuplicate && widget.bill != null) {
+        _invoiceController.text =
+        await _billRepository.generateNextInvoiceNumber();
+        _isInvoiceAutoGenerated = true;
+      }
+    } catch (error) {
+      if (mounted) {
+        _showError(error.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _loadGstRate() async {
+    final Database db = await _databaseHelper.database;
+
+    final List<Map<String, dynamic>> rows = await db.query(
+      'gst_settings',
+      columns: ['total_gst_rate'],
+      orderBy: 'updated_at DESC',
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      _totalGstRate = 0;
+      return;
+    }
+
+    final dynamic value = rows.first['total_gst_rate'];
+    _totalGstRate = value is num
+        ? value.toDouble()
+        : double.tryParse(value.toString()) ?? 0;
+  }
+
+  Future<void> _loadExistingBill(TyreBill bill) async {
+    _invoiceController.text = bill.invoiceNumber;
+    _gstInvoiceController.text = bill.gstInvoiceNumber ?? '';
+    _customerNameController.text = bill.customerName;
+    _customerNumberController.text = bill.customerNumber;
+    _addressController.text = bill.address ?? '';
+    // Load GST information saved with the existing invoice.
+    _gstinController.text = bill.gstin ?? '';
+    _gstLegalNameController.text = bill.legalName ?? '';
+    _gstTradeNameController.text = bill.tradeName ?? '';
+    _vehicleNumberController.text = bill.vehicleNumber;
+    _kmsController.text = bill.kms.toString();
+    _remarksController.text = bill.remarks;
+    _selectedDate = bill.date;
+    _billType = bill.billType;
+    _paymentMethod = bill.paymentMethod;
+
+    if (bill.customerId != null) {
+      _selectedCustomer =
+      await _customerRepository.getCustomerById(bill.customerId!);
+    }
+
+    final List<TyreBillItem> billItems =
+    await _billRepository.getItemsForBill(bill.id!);
+
+    for (final TyreBillItem item in billItems) {
+      final TyreStock? stock =
+      await _stockRepository.getById(item.tyreStockId);
+
+      // Keep the invoice usable even if an old stock record was
+      // removed. The saved item snapshot remains available.
+      final TyreStock fallback = TyreStock(
+        id: item.tyreStockId,
+        franchise: item.franchise,
+        vehicleType: item.vehicleType,
+        tyre: item.tyre,
+        pattern: item.pattern,
+        size: item.size,
+        stock: 0,
+        sellPrice: item.rate,
+        llp: 0,
+      );
+
+      final _TyreBillItemDraft draft =
+      _TyreBillItemDraft(stock ?? fallback);
+      draft.quantityController.text =
+          _formatNumber(item.quantity);
+      draft.rateController.text =
+          _formatNumber(item.rate);
+      _items.add(draft);
+    }
+
+    if (_items.isEmpty) {
+      _addEmptyItem();
+    }
+  }
+
+  @override
+  void dispose() {
+    _invoiceController.dispose();
+    _gstInvoiceController.dispose();
+    _customerSearchController.dispose();
+    _customerNameController.dispose();
+    _customerNumberController.dispose();
+    _addressController.dispose();
+    // Dispose GST taxpayer controllers.
+    _gstinController.dispose();
+    _gstLegalNameController.dispose();
+    _gstTradeNameController.dispose();
+
+    _vehicleNumberController.dispose();
+    _vehicleNumberController.dispose();
+    _kmsController.dispose();
+    _remarksController.dispose();
+
+    for (final _TyreBillItemDraft item in _items) {
+      item.dispose();
+    }
+
+    super.dispose();
+  }
+
+  // ============================================================
+  // CUSTOMER SELECTION
+  // ============================================================
+
+  Future<void> _selectCustomer() async {
+    final Customer? customer =
+    await showDialog<Customer>(
+      context: context,
+      builder: (BuildContext context) {
+        return const _CustomerSearchDialog();
+      },
+    );
+
+    if (!mounted || customer == null) {
+      return;
+    }
+
+    _applyCustomer(customer);
+  }
+
+  void _applyCustomer(Customer customer) {
+    setState(() {
+      _selectedCustomer = customer;
+      _customerNameController.text = customer.name;
+      _customerNumberController.text = customer.phone;
+      _addressController.text = customer.address ?? '';
+    });
+  }
+
+  Future<void> _createCustomer() async {
+    final List<Customer> before =
+    await _customerRepository.getCustomers();
+    final Set<int> oldIds = before
+        .where((Customer customer) => customer.id != null)
+        .map((Customer customer) => customer.id!)
+        .toSet();
+
+    if (!mounted) return;
+
+    final dynamic result = await Navigator.of(context).push(
+      MaterialPageRoute<dynamic>(
+        builder: (BuildContext context) =>
+        const AddEditCustomerScreen(),
+      ),
+    );
+
+    if (!mounted || result != true) {
+      return;
+    }
+
+    final List<Customer> after =
+    await _customerRepository.getCustomers();
+
+    Customer? newCustomer;
+    for (final Customer customer in after) {
+      if (customer.id != null && !oldIds.contains(customer.id)) {
+        newCustomer = customer;
+        break;
+      }
+    }
+
+    // Fallback for an unusual database implementation where the
+    // new ID could not be detected from the before/after lists.
+    newCustomer ??= after.isNotEmpty ? after.first : null;
+
+    if (newCustomer != null) {
+      _applyCustomer(newCustomer);
+    }
+  }
+
+  // ============================================================
+  // TYRE ITEM MANAGEMENT
+  // ============================================================
+
+  void _addEmptyItem() {
+    setState(() {
+      _items.add(_TyreBillItemDraft(null));
+    });
+  }
+
+  Future<void> _selectStock(int index) async {
+    final TyreStock? stock = await showDialog<TyreStock>(
+      context: context,
+      builder: (BuildContext context) =>
+      const _TyreStockSelectionDialog(),
+    );
+
+    if (!mounted || stock == null) {
+      return;
+    }
+
+    final _TyreBillItemDraft item = _items[index];
+
+    setState(() {
+      item.stock = stock;
+
+      // Use the stock Sell Price as the initial billing rate.
+      if (item.rateController.text.trim().isEmpty ||
+          item.rateController.text.trim() == '0') {
+        item.rateController.text =
+            _formatNumber(stock.sellPrice);
+      }
+    });
+  }
+
+  void _removeItem(int index) {
+    if (_items.length == 1) {
+      _showError('At least one tyre item is required.');
+      return;
+    }
+
+    setState(() {
+      final _TyreBillItemDraft removed = _items.removeAt(index);
+      removed.dispose();
+    });
+  }
+
+  // ============================================================
+  // CALCULATIONS
+  // ============================================================
+
+  double _quantity(_TyreBillItemDraft item) {
+    return double.tryParse(
+      item.quantityController.text.trim(),
+    ) ??
+        0;
+  }
+
+  double _rate(_TyreBillItemDraft item) {
+    return double.tryParse(
+      item.rateController.text.trim(),
+    ) ??
+        0;
+  }
+
+  // The Rate entered by the user is always TAX-INCLUSIVE.
+  // Example at 18% GST: ₹1,180 inclusive -> ₹1,000 taxable +
+  // ₹90 SGST + ₹90 CGST = ₹1,180 grand total.
+  double get _grandTotal {
+    double total = 0;
+
+    for (final _TyreBillItemDraft item in _items) {
+      total += _quantity(item) * _rate(item);
+    }
+
+    return total;
+  }
+
+  double get _taxableAmount {
+    if (_totalGstRate <= 0) {
+      return _grandTotal;
+    }
+
+    // Extract GST from the tax-inclusive amount instead of adding GST
+    // on top of the amount entered by the user.
+    return _grandTotal * 100 / (100 + _totalGstRate);
+  }
+
+  double get _sgstRate => _totalGstRate / 2;
+  double get _cgstRate => _totalGstRate / 2;
+
+  double get _sgstAmount =>
+      _taxableAmount * _sgstRate / 100;
+
+  double get _cgstAmount =>
+      _taxableAmount * _cgstRate / 100;
+
+  // ============================================================
+  // SAVE
+  // ============================================================
+
+  Future<void> _save() async {
+    if (_saving) return;
+
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_selectedCustomer == null) {
+      _showError('Please select a customer.');
+      return;
+    }
+
+    for (final _TyreBillItemDraft item in _items) {
+      if (item.stock == null) {
+        _showError('Please select a tyre for every item.');
+        return;
+      }
+
+      final double quantity = _quantity(item);
+      final double rate = _rate(item);
+
+      if (quantity <= 0 || quantity != quantity.roundToDouble()) {
+        _showError('Tyre quantity must be a whole number greater than zero.');
+        return;
+      }
+
+      if (rate < 0) {
+        _showError('Tyre rate cannot be negative.');
+        return;
+      }
+    }
+
+    if (_billType == 'GST Invoice' &&
+        _gstInvoiceController.text.trim().isEmpty) {
+      _showError('GST Invoice Number is required.');
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final DateTime now = DateTime.now();
+
+      final List<TyreBillItem> billItems =
+      _items.map(((_TyreBillItemDraft draft) {
+        final TyreStock stock = draft.stock!;
+        final double quantity = _quantity(draft);
+        final double rate = _rate(draft);
+
+        return TyreBillItem(
+          id: null,
+          billId: _isEdit ? widget.bill!.id : null,
+          tyreStockId: stock.id!,
+          franchise: stock.franchise,
+          vehicleType: stock.vehicleType,
+          tyre: stock.tyre,
+          pattern: stock.pattern,
+          size: stock.size,
+          quantity: quantity,
+          rate: rate,
+          amount: TyreBillItem.calculateAmount(
+            quantity,
+            rate,
+          ),
+        );
+      })).toList();
+
+      final String invoiceNumber =
+      _invoiceController.text.trim();
+
+      if (!_isEdit) {
+        await _billRepository.validateNewInvoiceNumber(
+          invoiceNumber,
+        );
+      }
+
+      final TyreBill bill = TyreBill(
+        id: _isEdit ? widget.bill!.id : null,
+        invoiceNumber: invoiceNumber,
+        billType: _billType,
+        gstInvoiceNumber: _billType == 'GST Invoice'
+            ? _gstInvoiceController.text.trim()
+            : null,
+        date: _selectedDate,
+        customerId: _selectedCustomer!.id,
+        customerName: _customerNameController.text.trim(),
+        customerNumber:
+        _customerNumberController.text.trim(),
+        address: _addressController.text.trim().isEmpty
+            ? null
+            : _addressController.text.trim(),
+        // Customer model currently has no GSTIN/legal/trade-name
+        // fields, so these remain null until that information is
+        // added to the customer data model in a separate step.
+        // Save the GST information fetched/verified for this invoice.
+        gstin: _gstinController.text.trim().isEmpty
+            ? null
+            : _gstinController.text.trim().toUpperCase(),
+
+        legalName: _gstLegalNameController.text.trim().isEmpty
+            ? null
+            : _gstLegalNameController.text.trim(),
+
+        tradeName: _gstTradeNameController.text.trim().isEmpty
+            ? null
+            : _gstTradeNameController.text.trim(),
+        vehicleNumber:
+        _vehicleNumberController.text.trim(),
+        // Save the vehicle odometer reading in kilometres.
+        kms: int.tryParse(_kmsController.text.trim()) ?? 0,
+        taxableAmount: _roundMoney(_taxableAmount),
+        sgstRate: _roundRate(_sgstRate),
+        sgstAmount: _roundMoney(_sgstAmount),
+        cgstRate: _roundRate(_cgstRate),
+        cgstAmount: _roundMoney(_cgstAmount),
+        grandTotal: _roundMoney(_grandTotal),
+        paymentMethod: _paymentMethod,
+        remarks: _remarksController.text.trim(),
+        createdAt: _isEdit
+            ? widget.bill!.createdAt
+            : now,
+        updatedAt: now,
+      );
+
+      if (_isEdit) {
+        await _billRepository.updateBill(
+          bill: bill,
+          items: billItems,
+        );
+      } else {
+        await _billRepository.insertBill(
+          bill: bill,
+          items: billItems,
+        );
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isEdit
+                ? 'Tyre bill updated successfully.'
+                : 'Tyre bill saved successfully.',
+          ),
+        ),
+      );
+
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) {
+        _showError(_friendlyError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  String _friendlyError(Object error) {
+    final String message = error.toString();
+    if (message.startsWith('Bad state: ')) {
+      return message.substring('Bad state: '.length);
+    }
+    if (message.startsWith('Invalid argument(s): ')) {
+      return message.substring('Invalid argument(s): '.length);
+    }
+    return message.replaceFirst('Exception: ', '');
+  }
+
+  // ============================================================
+  // DATE
+  // ============================================================
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+
+    if (picked == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = DateTime(
+        picked.year,
+        picked.month,
+        picked.day,
+      );
+    });
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final String title = _isEdit
+        ? 'Edit Tyre Bill'
+        : widget.isDuplicate
+        ? 'Duplicate Tyre Bill'
+        : 'New Tyre Bill';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+      ),
+      body: _loading
+          ? const Center(
+        child: CircularProgressIndicator(),
+      )
+          : Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            100,
+          ),
+          children: <Widget>[
+            _buildInvoiceSection(),
+            const SizedBox(height: 16),
+            _buildCustomerSection(),
+            const SizedBox(height: 16),
+            _buildVehicleSection(),
+            const SizedBox(height: 16),
+            _buildItemsSection(),
+            const SizedBox(height: 16),
+            _buildTotalsSection(),
+            const SizedBox(height: 16),
+            _buildPaymentSection(),
+            const SizedBox(height: 16),
+            _buildRemarksSection(),
+            const SizedBox(height: 24),
+            _buildSaveButton(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInvoiceSection() {
+    return _sectionCard(
+      title: 'Invoice Details',
+      icon: Icons.receipt_long_outlined,
+      children: <Widget>[
+        TextFormField(
+          controller: _invoiceController,
+          readOnly: _isInvoiceLocked,
+          decoration: InputDecoration(
+            labelText: 'Invoice Number',
+            hintText: _isInvoiceLocked
+                ? null
+                : 'Example: INV125',
+            prefixIcon: const Icon(Icons.numbers),
+            suffixIcon: _isInvoiceLocked
+                ? const Icon(Icons.lock_outline)
+                : null,
+            border: const OutlineInputBorder(),
+          ),
+          validator: (String? value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Enter invoice number';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: _billType,
+          decoration: const InputDecoration(
+            labelText: 'Bill Type',
+            prefixIcon: Icon(Icons.description_outlined),
+            border: OutlineInputBorder(),
+          ),
+          items: const <DropdownMenuItem<String>>[
+            DropdownMenuItem(
+              value: 'GST Invoice',
+              child: Text('GST Invoice'),
+            ),
+            DropdownMenuItem(
+              value: 'Non-GST Invoice',
+              child: Text('Non-GST Invoice'),
+            ),
+          ],
+          onChanged: (String? value) {
+            if (value == null) return;
+            setState(() {
+              _billType = value;
+              if (value == 'Non-GST Invoice') {
+                _gstInvoiceController.clear();
+              }
+            });
+          },
+        ),
+        if (_billType == 'GST Invoice') ...<Widget>[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _gstInvoiceController,
+            decoration: const InputDecoration(
+              labelText: 'GST Invoice Number',
+              prefixIcon: Icon(Icons.confirmation_number_outlined),
+              border: OutlineInputBorder(),
+            ),
+            validator: (String? value) {
+              if (_billType == 'GST Invoice' &&
+                  (value == null || value.trim().isEmpty)) {
+                return 'Enter GST Invoice Number';
+              }
+              return null;
+            },
+          ),
+        ],
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: _pickDate,
+          borderRadius: BorderRadius.circular(4),
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'Invoice Date',
+              prefixIcon: Icon(Icons.calendar_today_outlined),
+              border: OutlineInputBorder(),
+            ),
+            child: Text(
+              DateFormat('dd/MM/yyyy').format(_selectedDate),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'HSN Code',
+            prefixIcon: Icon(Icons.qr_code_2_outlined),
+            border: OutlineInputBorder(),
+          ),
+          child: Text(TyreBill.hsnCode),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCustomerSection() {
+    return _sectionCard(
+      title: 'Customer',
+      icon: Icons.person_outline,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _selectCustomer,
+                icon: const Icon(Icons.search),
+                label: const Text('Search Customer'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: _createCustomer,
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Create'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _customerNameController,
+          readOnly: true,
+          decoration: const InputDecoration(
+            labelText: 'Customer Name',
+            prefixIcon: Icon(Icons.person_outline),
+            border: OutlineInputBorder(),
+          ),
+          validator: (String? value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Select a customer';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _customerNumberController,
+          readOnly: true,
+          decoration: const InputDecoration(
+            labelText: 'Customer Number',
+            prefixIcon: Icon(Icons.phone_outlined),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _addressController,
+          readOnly: true,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Address',
+            prefixIcon: Icon(Icons.location_on_outlined),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // ------------------------------------------------------------
+        // GST DETAILS
+        // ------------------------------------------------------------
+
+        TextFormField(
+          controller: _gstinController,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.allow(
+              RegExp(r'[A-Za-z0-9]'),
+            ),
+            LengthLimitingTextInputFormatter(15),
+          ],
+          decoration: const InputDecoration(
+            labelText: 'GSTIN',
+            hintText: 'Example: 29AFLPR0084H2Z2',
+            prefixIcon: Icon(
+              Icons.verified_user_outlined,
+            ),
+            border: OutlineInputBorder(),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _verifyGstDetails,
+            icon: const Icon(
+              Icons.search,
+            ),
+            label: const Text(
+              'Verify / Fetch GST Details',
+            ),
+          ),
+        ),
+
+        // Show the fetched legal name only when available.
+        if (_gstLegalNameController.text.trim().isNotEmpty) ...<Widget>[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _gstLegalNameController,
+            readOnly: true,
+            decoration: const InputDecoration(
+              labelText: 'GST Legal Name',
+              prefixIcon: Icon(
+                Icons.business_outlined,
+              ),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+
+        // Show the fetched trade name only when available.
+        if (_gstTradeNameController.text.trim().isNotEmpty) ...<Widget>[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _gstTradeNameController,
+            readOnly: true,
+            decoration: const InputDecoration(
+              labelText: 'GST Trade Name',
+              prefixIcon: Icon(
+                Icons.storefront_outlined,
+              ),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildVehicleSection() {
+    return _sectionCard(
+      title: 'Vehicle',
+      icon: Icons.directions_car_outlined,
+      children: <Widget>[
+        TextFormField(
+          controller: _vehicleNumberController,
+          textCapitalization: TextCapitalization.characters,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.allow(
+              RegExp(r'[A-Za-z0-9 -]'),
+            ),
+          ],
+          decoration: const InputDecoration(
+            labelText: 'Vehicle Number',
+            hintText: 'Example: KA01AB1234',
+            prefixIcon: Icon(Icons.directions_car_outlined),
+            border: OutlineInputBorder(),
+          ),
+          validator: (String? value) {
+            if (value == null || value.trim().isEmpty) {
+              return 'Enter vehicle number';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 12),
+
+        // Vehicle odometer reading in kilometres.
+        TextFormField(
+          controller: _kmsController,
+          keyboardType: TextInputType.number,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.digitsOnly,
+          ],
+          decoration: const InputDecoration(
+            labelText: 'KMS',
+            hintText: 'Example: 45280',
+            prefixIcon: Icon(Icons.speed_outlined),
+            border: OutlineInputBorder(),
+          ),
+          validator: (String? value) {
+            final String text = value?.trim() ?? '';
+
+            if (text.isEmpty) {
+              return 'Enter KMS';
+            }
+
+            final int? kms = int.tryParse(text);
+
+            if (kms == null) {
+              return 'Enter a valid KMS';
+            }
+
+            if (kms < 0) {
+              return 'KMS cannot be negative';
+            }
+
+            return null;
+          },
+        ),
+      ],
+    );
+  }
+
+
+
+  Widget _buildItemsSection() {
+    return _sectionCard(
+      title: 'Tyre Items',
+      icon: Icons.tire_repair_outlined,
+      children: <Widget>[
+        ...List<Widget>.generate(
+          _items.length,
+              (int index) => _buildItemCard(index),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _addEmptyItem,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Another Item'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildItemCard(int index) {
+    final _TyreBillItemDraft item = _items[index];
+    final TyreStock? stock = item.stock;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(
+          color: Theme.of(context).dividerColor,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'Item ${index + 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _removeItem(index),
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Remove item',
+                ),
+              ],
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _selectStock(index),
+              icon: const Icon(Icons.search),
+              label: Text(
+                stock == null
+                    ? 'Select Tyre From Stock'
+                    : '${stock.franchise} • ${stock.tyre} • ${stock.size}',
+              ),
+            ),
+            if (stock != null) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                '${stock.vehicleType}  |  ${stock.pattern}  |  Available Stock: ${stock.stock}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(
+                  child: TextFormField(
+                    controller: item.quantityController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: false,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Quantity',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (String? value) {
+                      final double quantity =
+                          double.tryParse(value?.trim() ?? '') ?? 0;
+                      if (quantity <= 0) {
+                        return 'Required';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: item.rateController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: <TextInputFormatter>[
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'^\d*\.?\d{0,2}'),
+                      ),
+                    ],
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Rate (Inclusive of GST)',
+                      prefixText: '₹ ',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (String? value) {
+                      final double rate =
+                          double.tryParse(value?.trim() ?? '') ?? -1;
+                      if (rate < 0) {
+                        return 'Required';
+                      }
+                      return null;
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                'Amount (Including GST): ₹${_formatMoney(_quantity(item) * _rate(item))}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTotalsSection() {
+    return _sectionCard(
+      title: 'Invoice Totals',
+      icon: Icons.calculate_outlined,
+      children: <Widget>[
+        _totalRow(
+          'Taxable Amount',
+          _taxableAmount,
+        ),
+        const SizedBox(height: 8),
+        _totalRow(
+          'SGST (${_sgstRate.toStringAsFixed(2)}%)',
+          _sgstAmount,
+        ),
+        const SizedBox(height: 8),
+        _totalRow(
+          'CGST (${_cgstRate.toStringAsFixed(2)}%)',
+          _cgstAmount,
+        ),
+        const Divider(height: 24),
+        _totalRow(
+          'Grand Total',
+          _grandTotal,
+          bold: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    return _sectionCard(
+      title: 'Payment',
+      icon: Icons.payments_outlined,
+      children: <Widget>[
+        DropdownButtonFormField<String>(
+          initialValue: _paymentMethod,
+          decoration: const InputDecoration(
+            labelText: 'Payment Method',
+            prefixIcon: Icon(Icons.payment_outlined),
+            border: OutlineInputBorder(),
+          ),
+          items: const <DropdownMenuItem<String>>[
+            DropdownMenuItem(
+              value: 'Cash',
+              child: Text('Cash'),
+            ),
+            DropdownMenuItem(
+              value: 'G Pay',
+              child: Text('G Pay'),
+            ),
+          ],
+          onChanged: (String? value) {
+            if (value == null) return;
+            setState(() => _paymentMethod = value);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRemarksSection() {
+    return _sectionCard(
+      title: 'Remarks',
+      icon: Icons.notes_outlined,
+      children: <Widget>[
+        TextFormField(
+          controller: _remarksController,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Optional remarks',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSaveButton() {
+    return SizedBox(
+      height: 52,
+      child: FilledButton.icon(
+        onPressed: _saving ? null : _save,
+        icon: _saving
+            ? const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+          ),
+        )
+            : const Icon(Icons.save_outlined),
+        label: Text(
+          _saving
+              ? 'Saving...'
+              : _isEdit
+              ? 'Update Tyre Bill'
+              : 'Save Tyre Bill',
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionCard({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(icon),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _totalRow(
+      String label,
+      double value, {
+        bool bold = false,
+      }) {
+    final TextStyle? base =
+        Theme.of(context).textTheme.bodyLarge;
+
+    final TextStyle style = (base ?? const TextStyle()).copyWith(
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      fontSize: bold ? 18 : null,
+    );
+
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(label, style: style),
+        ),
+        Text(
+          '₹${_formatMoney(value)}',
+          style: style,
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  double _roundMoney(double value) {
+    return double.parse(value.toStringAsFixed(2));
+  }
+
+  double _roundRate(double value) {
+    return double.parse(value.toStringAsFixed(2));
+  }
+
+  String _formatMoney(double value) {
+    return value.toStringAsFixed(2);
+  }
+
+  String _formatNumber(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toString();
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ITEM DRAFT
+// ============================================================
+
+/// Holds temporary form data for one tyre item row.
+class _TyreBillItemDraft {
+  TyreStock? stock;
+
+  final TextEditingController quantityController =
+  TextEditingController(text: '1');
+  final TextEditingController rateController =
+  TextEditingController();
+
+  _TyreBillItemDraft(this.stock) {
+    if (stock != null) {
+      rateController.text = stock!.sellPrice.toString();
+    }
+  }
+
+  void dispose() {
+    quantityController.dispose();
+    rateController.dispose();
+  }
+}
+
+// ============================================================
+// CUSTOMER SEARCH DIALOG
+// ============================================================
+
+class _CustomerSearchDialog extends StatefulWidget {
+  const _CustomerSearchDialog();
+
+  @override
+  State<_CustomerSearchDialog> createState() =>
+      _CustomerSearchDialogState();
+}
+
+class _CustomerSearchDialogState
+    extends State<_CustomerSearchDialog> {
+  final CustomerRepository _repository = CustomerRepository();
+  final TextEditingController _searchController =
+  TextEditingController();
+
+  List<Customer> _customers = <Customer>[];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomers();
+    _searchController.addListener(_search);
+  }
+
+  @override
+  void dispose() {
+    _searchController
+      ..removeListener(_search)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCustomers() async {
+    final List<Customer> customers =
+    await _repository.getCustomers();
+
+    if (!mounted) return;
+
+    setState(() {
+      _customers = customers;
+      _loading = false;
+    });
+  }
+
+  Future<void> _search() async {
+    final String query = _searchController.text.trim();
+
+    final List<Customer> customers =
+    await _repository.searchCustomers(query);
+
+    if (!mounted) return;
+
+    setState(() => _customers = customers);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Select Customer'),
+      content: SizedBox(
+        width: 500,
+        height: 500,
+        child: Column(
+          children: <Widget>[
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search name or customer number',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                child: CircularProgressIndicator(),
+              )
+                  : _customers.isEmpty
+                  ? const Center(
+                child: Text('Customer Not Found'),
+              )
+                  : ListView.separated(
+                itemCount: _customers.length,
+                separatorBuilder: (_, _) =>
+                const Divider(height: 1),
+                itemBuilder: (
+                    BuildContext context,
+                    int index,
+                    ) {
+                  final Customer customer =
+                  _customers[index];
+
+                  return ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.person_outline),
+                    ),
+                    title: Text(customer.name),
+                    subtitle: Text(customer.phone),
+                    onTap: () =>
+                        Navigator.of(context).pop(customer),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// TYRE STOCK SELECTION DIALOG
+// ============================================================
+
+class _TyreStockSelectionDialog extends StatefulWidget {
+  const _TyreStockSelectionDialog();
+
+  @override
+  State<_TyreStockSelectionDialog> createState() =>
+      _TyreStockSelectionDialogState();
+}
+
+class _TyreStockSelectionDialogState
+    extends State<_TyreStockSelectionDialog> {
+  final TyreStockRepository _repository =
+  TyreStockRepository();
+  final TextEditingController _searchController =
+  TextEditingController();
+
+  List<TyreStock> _stocks = <TyreStock>[];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStocks();
+    _searchController.addListener(_search);
+  }
+
+  @override
+  void dispose() {
+    _searchController
+      ..removeListener(_search)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadStocks() async {
+    final List<TyreStock> stocks =
+    await _repository.getAll();
+
+    if (!mounted) return;
+
+    setState(() {
+      _stocks = stocks;
+      _loading = false;
+    });
+  }
+
+  Future<void> _search() async {
+    final List<TyreStock> stocks =
+    await _repository.search(
+      _searchController.text.trim(),
+    );
+
+    if (!mounted) return;
+
+    setState(() => _stocks = stocks);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Select Tyre From Stock'),
+      content: SizedBox(
+        width: 600,
+        height: 550,
+        child: Column(
+          children: <Widget>[
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: 'Search franchise, tyre, pattern or size',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                child: CircularProgressIndicator(),
+              )
+                  : _stocks.isEmpty
+                  ? const Center(
+                child: Text('No tyre stock found'),
+              )
+                  : ListView.separated(
+                itemCount: _stocks.length,
+                separatorBuilder: (_, _) =>
+                const Divider(height: 1),
+                itemBuilder: (
+                    BuildContext context,
+                    int index,
+                    ) {
+                  final TyreStock stock = _stocks[index];
+
+                  return ListTile(
+                    leading: const Icon(
+                      Icons.tire_repair_outlined,
+                    ),
+                    title: Text(
+                      '${stock.franchise} • ${stock.tyre}',
+                    ),
+                    subtitle: Text(
+                      '${stock.vehicleType} • ${stock.pattern} • ${stock.size}\n'
+                          'Stock: ${stock.stock}  |  Sell Price: ₹${stock.sellPrice.toStringAsFixed(2)}',
+                    ),
+                    isThreeLine: true,
+                    enabled: stock.stock > 0,
+                    onTap: stock.stock > 0
+                        ? () => Navigator.of(context)
+                        .pop(stock)
+                        : null,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}

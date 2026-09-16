@@ -111,6 +111,7 @@ class _AddEditCustomerScreenState
   final TextEditingController _addressController =
   TextEditingController();
 
+
   final TextEditingController _remarksController =
   TextEditingController();
 

@@ -44,8 +44,10 @@ import '../screens/customer_list_screen.dart';
 import '../screens/fleet_service_list_screen.dart';
 import '../screens/emission_test_list_screen.dart';
 import '../screens/accessory_list_screen.dart';
+import '../screens/gst_settings_screen.dart';
 import '../screens/report_screen.dart';
-
+import '../screens/tyre_bill_list_screen.dart';
+import '../screens/alignment_billing_screen.dart';
 // ============================================================
 // MODELS
 // ============================================================
@@ -64,6 +66,7 @@ import '../repositories/car_document_repository.dart';
 // SERVICES
 // ============================================================
 
+import '../screens/tyre_stock_list_screen.dart';
 import '../services/fleet_service_reminder_service.dart';
 import '../services/car_document_reminder_service.dart';
 import '../services/sms_service.dart';
@@ -390,6 +393,106 @@ class _AppShellState extends State<AppShell> {
                     },
                   ),
 
+                  // ============================================================
+                  // TYRE STOCK
+                  //
+                  // Opens the Tyre Stock management screen.
+                  // ============================================================
+
+                  _buildMoreModuleCard(
+                    icon: Icons.tire_repair_outlined,
+                    title: 'Tyre Stock',
+                    subtitle:
+                    'Manage Cherry and Tyreplex tyre stock',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (
+                              BuildContext context,
+                              ) {
+                            return const TyreStockListScreen();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ============================================================
+                  // GST SETTINGS
+                  //
+                  // Opens the GST Settings screen where the default total GST
+                  // rate can be configured. SGST and CGST are calculated
+                  // automatically from the total GST rate.
+                  // ============================================================
+
+                  _buildMoreModuleCard(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'GST Settings',
+                    subtitle:
+                    'Configure the default GST rate for tyre invoices',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) {
+                            return const GstSettingsScreen();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ============================================================
+                  // TYRE BILLING
+                  //
+                  // Opens the Tyre Billing management screen.
+                  // ============================================================
+
+                  _buildMoreModuleCard(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'Tyre Billing',
+                    subtitle:
+                    'Create, manage and duplicate tyre invoices',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) {
+                            return const TyreBillListScreen();
+                          },
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ============================================================
+                  // ALIGNMENT BILLING
+                  //
+                  // Opens the Simple Alignment Billing management screen.
+                  //
+                  // Alignment Billing is kept under More so that the existing
+                  // bottom navigation remains unchanged.
+                  // ============================================================
+
+                  _buildMoreModuleCard(
+                    icon: Icons.car_repair_outlined,
+                    title: 'Alignment Billing',
+                    subtitle:
+                    'Create, manage and duplicate alignment bills',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext context) {
+                            return const AlignmentBillingScreen();
+                          },
+                        ),
+                      );
+                    },
+                  ),
                   // Future modules can be added here without
                   // increasing the number of bottom navigation
                   // buttons.

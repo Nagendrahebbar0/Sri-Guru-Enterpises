@@ -148,6 +148,8 @@ flutter:
 
   assets:
     - assets/icon/sri_guru_logo.png
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
 
 # ============================================================
 # APPLICATION LAUNCHER ICON
