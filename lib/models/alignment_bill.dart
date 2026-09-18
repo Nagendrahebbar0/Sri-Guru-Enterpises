@@ -52,6 +52,10 @@ class AlignmentBill {
   /// Vehicle registration number.
   final String vehicleNumber;
 
+  /// Vehicle model selected for the alignment bill.
+  /// When Others is selected, the custom model name is stored here.
+  final String vehicleModel;
+
   /// Vehicle odometer reading in kilometres.
   final int kms;
 
@@ -118,6 +122,7 @@ class AlignmentBill {
     required this.customerNumber,
     this.address,
     required this.vehicleNumber,
+    required this.vehicleModel,
     required this.kms,
     required this.service,
     required this.quantity,
@@ -147,6 +152,7 @@ class AlignmentBill {
       'customer_number': customerNumber,
       'address': address,
       'vehicle_number': vehicleNumber,
+      'vehicle_model': vehicleModel,
       'kms': kms,
       'service': service,
       'quantity': quantity,
@@ -180,6 +186,7 @@ class AlignmentBill {
       customerNumber: map['customer_number'] as String,
       address: map['address'] as String?,
       vehicleNumber: map['vehicle_number'] as String,
+      vehicleModel: map['vehicle_model'] as String? ?? 'Others',
       kms: (map['kms'] as num?)?.toInt() ?? 0,
       service: map['service'] as String,
       quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
@@ -215,6 +222,7 @@ class AlignmentBill {
     String? customerNumber,
     String? address,
     String? vehicleNumber,
+    String? vehicleModel,
     int? kms,
     String? service,
     double? quantity,
@@ -234,6 +242,7 @@ class AlignmentBill {
       customerNumber: customerNumber ?? this.customerNumber,
       address: address ?? this.address,
       vehicleNumber: vehicleNumber ?? this.vehicleNumber,
+      vehicleModel: vehicleModel ?? this.vehicleModel,
       kms: kms ?? this.kms,
       service: service ?? this.service,
       quantity: quantity ?? this.quantity,

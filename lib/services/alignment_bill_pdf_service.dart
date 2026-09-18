@@ -381,6 +381,12 @@ class AlignmentBillPdfService {
         ),
 
         _infoRow(
+          'Vehicle Model',
+          bill.vehicleModel,
+          fonts,
+        ),
+
+        _infoRow(
           'KMS',
           bill.kms.toString(),
           fonts,

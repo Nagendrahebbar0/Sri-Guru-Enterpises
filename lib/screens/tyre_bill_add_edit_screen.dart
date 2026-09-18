@@ -75,7 +75,23 @@ class _TyreBillAddEditScreenState
   final TextEditingController _vehicleNumberController =
   TextEditingController();
 
+  // Stores the custom vehicle model when Others is selected.
+  final TextEditingController _otherVehicleModelController =
+  TextEditingController();
+
   // Stores the vehicle odometer reading in kilometres.
+  // Vehicle models available in Tyre Billing.
+  static const List<String> _vehicleModels = <String>[
+    'Etios',
+    'Ertiga',
+    'Dzire',
+    'Innova',
+    'Innova Crysta',
+    'Others',
+  ];
+
+  String _selectedVehicleModel = 'Etios';
+
   final TextEditingController _kmsController =
   TextEditingController();
 
@@ -241,6 +257,17 @@ class _TyreBillAddEditScreenState
     _gstLegalNameController.text = bill.legalName ?? '';
     _gstTradeNameController.text = bill.tradeName ?? '';
     _vehicleNumberController.text = bill.vehicleNumber;
+
+    // Restore the saved vehicle model. Legacy/custom values are represented
+    // by Others with the original value placed in the custom field.
+    if (_vehicleModels.contains(bill.vehicleModel)) {
+      _selectedVehicleModel = bill.vehicleModel;
+      _otherVehicleModelController.clear();
+    } else {
+      _selectedVehicleModel = 'Others';
+      _otherVehicleModelController.text = bill.vehicleModel;
+    }
+
     _kmsController.text = bill.kms.toString();
     _remarksController.text = bill.remarks;
     _selectedDate = bill.date;
@@ -301,7 +328,7 @@ class _TyreBillAddEditScreenState
     _gstTradeNameController.dispose();
 
     _vehicleNumberController.dispose();
-    _vehicleNumberController.dispose();
+    _otherVehicleModelController.dispose();
     _kmsController.dispose();
     _remarksController.dispose();
 
@@ -553,6 +580,16 @@ class _TyreBillAddEditScreenState
       final String invoiceNumber =
       _invoiceController.text.trim();
 
+      final String vehicleModel =
+          _selectedVehicleModel == 'Others'
+              ? _otherVehicleModelController.text.trim()
+              : _selectedVehicleModel;
+
+      if (vehicleModel.isEmpty) {
+        _showError('Enter the vehicle model.');
+        return;
+      }
+
       if (!_isEdit) {
         await _billRepository.validateNewInvoiceNumber(
           invoiceNumber,
@@ -591,6 +628,7 @@ class _TyreBillAddEditScreenState
             : _gstTradeNameController.text.trim(),
         vehicleNumber:
         _vehicleNumberController.text.trim(),
+        vehicleModel: vehicleModel,
         // Save the vehicle odometer reading in kilometres.
         kms: int.tryParse(_kmsController.text.trim()) ?? 0,
         taxableAmount: _roundMoney(_taxableAmount),
@@ -990,6 +1028,54 @@ class _TyreBillAddEditScreenState
             return null;
           },
         ),
+        const SizedBox(height: 12),
+
+        // Vehicle model dropdown.
+        DropdownButtonFormField<String>(
+          initialValue: _selectedVehicleModel,
+          decoration: const InputDecoration(
+            labelText: 'Vehicle Model',
+            prefixIcon: Icon(Icons.directions_car_filled_outlined),
+            border: OutlineInputBorder(),
+          ),
+          items: _vehicleModels.map((String model) {
+            return DropdownMenuItem<String>(
+              value: model,
+              child: Text(model),
+            );
+          }).toList(),
+          onChanged: (String? value) {
+            if (value == null) return;
+            setState(() {
+              _selectedVehicleModel = value;
+              if (value != 'Others') {
+                _otherVehicleModelController.clear();
+              }
+            });
+          },
+        ),
+
+        if (_selectedVehicleModel == 'Others') ...<Widget>[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _otherVehicleModelController,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Other Vehicle Model',
+              hintText: 'Enter vehicle model',
+              prefixIcon: Icon(Icons.edit_outlined),
+              border: OutlineInputBorder(),
+            ),
+            validator: (String? value) {
+              if (_selectedVehicleModel == 'Others' &&
+                  (value == null || value.trim().isEmpty)) {
+                return 'Enter vehicle model';
+              }
+              return null;
+            },
+          ),
+        ],
+
         const SizedBox(height: 12),
 
         // Vehicle odometer reading in kilometres.

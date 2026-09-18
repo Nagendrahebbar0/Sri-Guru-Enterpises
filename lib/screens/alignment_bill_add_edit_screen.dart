@@ -76,6 +76,9 @@ class _AlignmentBillAddEditScreenState
   final TextEditingController _vehicleNumberController =
   TextEditingController();
 
+  final TextEditingController _otherVehicleModelController =
+  TextEditingController();
+
   final TextEditingController _kmsController =
   TextEditingController();
 
@@ -99,7 +102,19 @@ class _AlignmentBillAddEditScreenState
   // STATE
   // ------------------------------------------------------------
 
+  /// Vehicle models available in Alignment Billing.
+  static const List<String> _vehicleModels = <String>[
+    'Etios',
+    'Ertiga',
+    'Dzire',
+    'Innova',
+    'Innova Crysta',
+    'Others',
+  ];
+
   Customer? _selectedCustomer;
+
+  String _selectedVehicleModel = 'Etios';
 
   DateTime _selectedDate = DateTime.now();
 
@@ -227,6 +242,15 @@ class _AlignmentBillAddEditScreenState
 
     _vehicleNumberController.text =
         bill.vehicleNumber;
+
+    // Restore the saved model. Custom/legacy values are shown under Others.
+    if (_vehicleModels.contains(bill.vehicleModel)) {
+      _selectedVehicleModel = bill.vehicleModel;
+      _otherVehicleModelController.clear();
+    } else {
+      _selectedVehicleModel = 'Others';
+      _otherVehicleModelController.text = bill.vehicleModel;
+    }
 
     _kmsController.text =
         bill.kms.toString();
@@ -441,6 +465,17 @@ class _AlignmentBillAddEditScreenState
       return;
     }
 
+    // A custom model is required when Others is selected.
+    final String vehicleModel =
+        _selectedVehicleModel == 'Others'
+            ? _otherVehicleModelController.text.trim()
+            : _selectedVehicleModel;
+
+    if (vehicleModel.isEmpty) {
+      _showError('Enter the vehicle model.');
+      return;
+    }
+
     final String billNumber =
     _billNumberController.text.trim();
 
@@ -511,6 +546,8 @@ class _AlignmentBillAddEditScreenState
         _vehicleNumberController
             .text
             .trim(),
+
+        vehicleModel: vehicleModel,
 
         kms: int.tryParse(
           _kmsController.text.trim(),
@@ -606,6 +643,7 @@ class _AlignmentBillAddEditScreenState
     _customerNumberController.dispose();
     _addressController.dispose();
     _vehicleNumberController.dispose();
+    _otherVehicleModelController.dispose();
     _kmsController.dispose();
     _serviceController.dispose();
     _quantityController.dispose();
@@ -894,6 +932,52 @@ class _AlignmentBillAddEditScreenState
             return null;
           },
         ),
+
+        const SizedBox(height: 12),
+
+        DropdownButtonFormField<String>(
+          initialValue: _selectedVehicleModel,
+          decoration: const InputDecoration(
+            labelText: 'Vehicle Model',
+            prefixIcon: Icon(Icons.directions_car_outlined),
+            border: OutlineInputBorder(),
+          ),
+          items: _vehicleModels.map((String model) {
+            return DropdownMenuItem<String>(
+              value: model,
+              child: Text(model),
+            );
+          }).toList(),
+          onChanged: (String? value) {
+            if (value == null) return;
+            setState(() {
+              _selectedVehicleModel = value;
+              if (value != 'Others') {
+                _otherVehicleModelController.clear();
+              }
+            });
+          },
+        ),
+
+        if (_selectedVehicleModel == 'Others') ...<Widget>[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _otherVehicleModelController,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Other Vehicle Model',
+              hintText: 'Enter vehicle model',
+              prefixIcon: Icon(Icons.edit_outlined),
+              border: OutlineInputBorder(),
+            ),
+            validator: (String? value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Enter vehicle model';
+              }
+              return null;
+            },
+          ),
+        ],
 
         const SizedBox(height: 12),
 

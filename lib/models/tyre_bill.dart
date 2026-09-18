@@ -35,6 +35,10 @@ class TyreBill {
   // Vehicle number for which the tyres are being billed.
   final String vehicleNumber;
 
+  // Vehicle model selected for the tyre bill.
+  // When Others is selected, the custom model name is stored here.
+  final String vehicleModel;
+
   /// Vehicle odometer reading in kilometres.
   final int kms;
 
@@ -75,6 +79,7 @@ class TyreBill {
     this.legalName,
     this.tradeName,
     required this.vehicleNumber,
+    required this.vehicleModel,
     required this.kms,
     required this.taxableAmount,
     required this.sgstRate,
@@ -112,6 +117,7 @@ class TyreBill {
       'legal_name': legalName,
       'trade_name': tradeName,
       'vehicle_number': vehicleNumber,
+      'vehicle_model': vehicleModel,
       'kms': kms,
       'taxable_amount': taxableAmount,
       'sgst_rate': sgstRate,
@@ -145,6 +151,8 @@ class TyreBill {
       tradeName: map['trade_name'] as String?,
       vehicleNumber:
       map['vehicle_number'] as String? ?? '',
+      vehicleModel:
+      map['vehicle_model'] as String? ?? 'Others',
       kms: (map['kms'] as num?)?.toInt() ?? 0,
       taxableAmount: _toDouble(map['taxable_amount']),
       sgstRate: _toDouble(map['sgst_rate']),
@@ -175,6 +183,7 @@ class TyreBill {
     String? legalName,
     String? tradeName,
     String? vehicleNumber,
+    String? vehicleModel,
     int? kms,
     double? taxableAmount,
     double? sgstRate,
@@ -204,6 +213,8 @@ class TyreBill {
       tradeName: tradeName ?? this.tradeName,
       vehicleNumber:
       vehicleNumber ?? this.vehicleNumber,
+      vehicleModel:
+      vehicleModel ?? this.vehicleModel,
       kms: kms ?? this.kms,
       taxableAmount:
       taxableAmount ?? this.taxableAmount,

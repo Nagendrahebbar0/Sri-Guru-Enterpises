@@ -482,6 +482,14 @@ class _AlignmentBillingScreenState
             const SizedBox(height: 8),
 
             _infoRow(
+              Icons.car_rental_outlined,
+              'Vehicle Model',
+              bill.vehicleModel,
+            ),
+
+            const SizedBox(height: 8),
+
+            _infoRow(
               Icons.speed_outlined,
               'KMS',
               bill.kms.toString(),

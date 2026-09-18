@@ -37,7 +37,7 @@ class TyreBillPdfService {
       'assets/fonts/NotoSans-Regular.ttf';
   static const String _boldFontPath = 'assets/fonts/NotoSans-Bold.ttf';
 
-  static const String _companyName = 'SRI GURU ENTERPRISES';
+  static const String _companyName = 'SRI GURU TYRES & ACCESSORIES';
   static const String _invoiceTitle = 'TAX INVOICE';
   static const String _originalCopy = 'ORIGINAL FOR RECIPIENT';
 
@@ -361,8 +361,32 @@ class TyreBillPdfService {
                   ),
                   pw.SizedBox(height: 3),
                   pw.Text(
-                    'Tyre Billing',
-                    style: const pw.TextStyle(fontSize: 7.5),
+                    'GSTIN: 29BDDPG6090F1ZJ',
+                    style: const pw.TextStyle(fontSize: 7.2),
+                  ),
+                  pw.Text(
+                    'No 06, Ground Floor, B K Halli,',
+                    style: const pw.TextStyle(fontSize: 7.2),
+                  ),
+                  pw.Text(
+                    'Jala Hobli Chikkanahalli',
+                    style: const pw.TextStyle(fontSize: 7.2),
+                  ),
+                  pw.Text(
+                    'Mylanahalli village',
+                    style: const pw.TextStyle(fontSize: 7.2),
+                  ),
+                  pw.Text(
+                    'Bengaluru Urban, KARNATAKA, 562149',
+                    style: const pw.TextStyle(fontSize: 7.2),
+                  ),
+                  pw.Text(
+                    'Mobile: +91 9148763008',
+                    style: const pw.TextStyle(fontSize: 7.2),
+                  ),
+                  pw.Text(
+                    'Email: sgtaa2025@gmail.com',
+                    style: const pw.TextStyle(fontSize: 7.2),
                   ),
                 ],
               ),
@@ -438,6 +462,7 @@ class TyreBillPdfService {
     }
 
     rows.add(<String>['Vehicle Number', bill.vehicleNumber]);
+    rows.add(<String>['Vehicle Model', bill.vehicleModel]);
     rows.add(<String>['KMS', bill.kms.toString()]);
 
     return pw.Column(

@@ -1003,6 +1003,7 @@ class ExcelExportService {
       'Legal Name',
       'Trade Name',
       'Vehicle Number',
+      'Vehicle Model',
       'KMS',
       'Taxable Amount',
       'SGST Rate',
@@ -1118,80 +1119,87 @@ class ExcelExportService {
         record['vehicle_number'],
       );
 
-      _setInt(
+      _setText(
         sheet,
         row,
         13,
+        record['vehicle_model'],
+      );
+
+      _setInt(
+        sheet,
+        row,
+        14,
         record['kms'],
       );
 
       _setDouble(
         sheet,
         row,
-        14,
+        15,
         record['taxable_amount'],
       );
 
       _setDouble(
         sheet,
         row,
-        15,
+        16,
         record['sgst_rate'],
       );
 
       _setDouble(
         sheet,
         row,
-        16,
+        17,
         record['sgst_amount'],
       );
 
       _setDouble(
         sheet,
         row,
-        17,
+        18,
         record['cgst_rate'],
       );
 
       _setDouble(
         sheet,
         row,
-        18,
+        19,
         record['cgst_amount'],
       );
 
       _setDouble(
         sheet,
         row,
-        19,
+        20,
         record['grand_total'],
       );
 
       _setText(
         sheet,
         row,
-        20,
+        21,
         record['payment_method'],
       );
 
       _setText(
         sheet,
         row,
-        21,
+        22,
         record['remarks'],
       );
 
       _setText(
         sheet,
         row,
-        22,
+        23,
         record['created_at'],
       );
 
       _setText(
         sheet,
         row,
-        23,
+        24,
         record['updated_at'],
       );
 
@@ -1256,6 +1264,7 @@ class ExcelExportService {
       'Customer Number',
       'Address',
       'Vehicle Number',
+      'Vehicle Model',
       'KMS',
       'Service',
       'Quantity',
@@ -1334,66 +1343,73 @@ class ExcelExportService {
         record['vehicle_number'],
       );
 
-      _setInt(
+      _setText(
         sheet,
         row,
         8,
+        record['vehicle_model'],
+      );
+
+      _setInt(
+        sheet,
+        row,
+        9,
         record['kms'],
       );
 
       _setText(
         sheet,
         row,
-        9,
+        10,
         record['service'],
       );
 
       _setDouble(
         sheet,
         row,
-        10,
+        11,
         record['quantity'],
       );
 
       _setDouble(
         sheet,
         row,
-        11,
+        12,
         record['rate'],
       );
 
       _setDouble(
         sheet,
         row,
-        12,
+        13,
         record['amount'],
       );
 
       _setText(
         sheet,
         row,
-        13,
+        24,
         record['payment_method'],
       );
 
       _setText(
         sheet,
         row,
-        14,
+        24,
         record['remarks'],
       );
 
       _setText(
         sheet,
         row,
-        15,
+        24,
         record['created_at'],
       );
 
       _setText(
         sheet,
         row,
-        16,
+        24,
         record['updated_at'],
       );
 
@@ -1414,6 +1430,7 @@ class ExcelExportService {
         25,
         20,
         35,
+        20,
         20,
         14,
         25,
@@ -1516,7 +1533,7 @@ class ExcelExportService {
     row++) {
       sheet.setRowHeight(
         row,
-        21,
+        24,
       );
     }
 

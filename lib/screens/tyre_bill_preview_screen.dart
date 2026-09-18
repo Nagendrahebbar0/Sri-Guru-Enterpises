@@ -393,6 +393,10 @@ class _TyreBillPreviewScreenState extends State<TyreBillPreviewScreen> {
             bill.vehicleNumber,
           ),
           _infoRow(
+            'Vehicle Model',
+            bill.vehicleModel,
+          ),
+          _infoRow(
             'KMS',
             bill.kms.toString(),
           ),

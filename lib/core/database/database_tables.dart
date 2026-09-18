@@ -296,6 +296,8 @@ class DatabaseTables {
       trade_name TEXT,
 
       vehicle_number TEXT NOT NULL,
+
+      vehicle_model TEXT NOT NULL DEFAULT 'Others',
       
       kms INTEGER NOT NULL DEFAULT 0,
 

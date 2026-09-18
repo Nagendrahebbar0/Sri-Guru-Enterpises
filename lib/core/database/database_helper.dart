@@ -111,7 +111,7 @@ class DatabaseHelper {
       // Version 8 adds Tyre Billing System.
       // --------------------------------------------------------
 
-      version: 10,
+      version: 12,
 
       // --------------------------------------------------------
       // DATABASE CONFIGURATION
@@ -258,6 +258,24 @@ class DatabaseHelper {
         if (oldVersion < 10) {
           await _createAlignmentBillsTable(db);
         }
+
+        // VERSION 11: add Vehicle Model to Alignment Billing.
+        // Existing bills are preserved and default to Others.
+        if (oldVersion < 11) {
+          await db.execute('''
+          ALTER TABLE alignment_bills
+          ADD COLUMN vehicle_model TEXT NOT NULL DEFAULT 'Others'
+          ''');
+        }
+
+        // VERSION 12: add Vehicle Model to Tyre Billing.
+        // Existing tyre bills are preserved and default to Others.
+        if (oldVersion < 12) {
+          await db.execute('''
+          ALTER TABLE tyre_bills
+          ADD COLUMN vehicle_model TEXT NOT NULL DEFAULT 'Others'
+          ''');
+        }
       },
     );
   }
@@ -374,6 +392,7 @@ class DatabaseHelper {
       customer_number TEXT NOT NULL,
       address TEXT,
       vehicle_number TEXT NOT NULL,
+      vehicle_model TEXT NOT NULL DEFAULT 'Others',
       kms INTEGER NOT NULL DEFAULT 0,
       service TEXT NOT NULL,
       quantity REAL NOT NULL DEFAULT 1,

@@ -373,7 +373,7 @@ class _TyreBillListScreenState extends State<TyreBillListScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${bill.customerNumber} • ${bill.vehicleNumber}',
+                      '${bill.customerNumber} • ${bill.vehicleNumber} • ${bill.vehicleModel}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium,

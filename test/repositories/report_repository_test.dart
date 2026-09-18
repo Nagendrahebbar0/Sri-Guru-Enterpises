@@ -105,6 +105,94 @@ class TestDatabaseHelper extends DatabaseHelper {
             remarks TEXT NOT NULL
           )
         ''');
+
+
+        // Tyre Stock is always read by ReportRepository.
+        await db.execute('''
+          CREATE TABLE tyre_stocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            franchise TEXT NOT NULL,
+            vehicle_type TEXT NOT NULL,
+            tyre TEXT NOT NULL,
+            pattern TEXT NOT NULL,
+            size TEXT NOT NULL,
+            stock INTEGER NOT NULL DEFAULT 0,
+            sell_price REAL NOT NULL DEFAULT 0,
+            llp REAL NOT NULL DEFAULT 0,
+            UNIQUE(franchise, vehicle_type, tyre, pattern, size)
+          )
+        ''');
+
+        // Tyre Billing tables are also queried by ReportRepository.
+        await db.execute('''
+          CREATE TABLE tyre_bills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT NOT NULL UNIQUE,
+            bill_type TEXT NOT NULL,
+            gst_invoice_number TEXT,
+            date TEXT NOT NULL,
+            customer_id INTEGER,
+            customer_name TEXT NOT NULL,
+            customer_number TEXT NOT NULL,
+            address TEXT,
+            gstin TEXT,
+            legal_name TEXT,
+            trade_name TEXT,
+            vehicle_number TEXT NOT NULL,
+            kms INTEGER NOT NULL DEFAULT 0,
+            taxable_amount REAL NOT NULL DEFAULT 0,
+            sgst_rate REAL NOT NULL DEFAULT 0,
+            sgst_amount REAL NOT NULL DEFAULT 0,
+            cgst_rate REAL NOT NULL DEFAULT 0,
+            cgst_amount REAL NOT NULL DEFAULT 0,
+            grand_total REAL NOT NULL DEFAULT 0,
+            payment_method TEXT NOT NULL,
+            remarks TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE tyre_bill_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bill_id INTEGER NOT NULL,
+            tyre_stock_id INTEGER NOT NULL,
+            franchise TEXT NOT NULL,
+            vehicle_type TEXT NOT NULL,
+            tyre TEXT NOT NULL,
+            pattern TEXT NOT NULL,
+            size TEXT NOT NULL,
+            quantity REAL NOT NULL,
+            rate REAL NOT NULL,
+            amount REAL NOT NULL,
+            FOREIGN KEY (bill_id) REFERENCES tyre_bills(id) ON DELETE CASCADE
+          )
+        ''');
+
+        // Alignment Billing is also queried by ReportRepository.
+        await db.execute('''
+          CREATE TABLE alignment_bills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bill_number TEXT NOT NULL UNIQUE,
+            date TEXT NOT NULL,
+            customer_id INTEGER,
+            customer_name TEXT NOT NULL,
+            customer_number TEXT NOT NULL,
+            address TEXT,
+            vehicle_number TEXT NOT NULL,
+            vehicle_model TEXT NOT NULL DEFAULT 'Others',
+            kms INTEGER NOT NULL DEFAULT 0,
+            service TEXT NOT NULL,
+            quantity REAL NOT NULL DEFAULT 1,
+            rate REAL NOT NULL DEFAULT 0,
+            amount REAL NOT NULL DEFAULT 0,
+            payment_method TEXT NOT NULL,
+            remarks TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        ''');
       },
     );
 
